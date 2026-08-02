@@ -694,6 +694,12 @@ async function findOrCreateFolder(name, parent) {
 }
 $('#btnDrive').onclick = async () => {
   const st = $('#exportStatus');
+  if (!settings.clientId) {
+    st.innerHTML = 'Direct upload needs a <b>one-time Google setup</b> — open ⚙ <b>Settings</b> (top right of the home screen) and follow the steps under “Google Drive direct upload”.<br><br>' +
+      'No setup needed for <b>Share…</b> below: tap it, pick <b>Drive</b> in the share sheet, choose a folder, done.';
+    toast('Not set up yet — see the note above, or use Share…', 5000);
+    return;
+  }
   const btn = $('#btnDrive');
   btn.disabled = true;
   try {
