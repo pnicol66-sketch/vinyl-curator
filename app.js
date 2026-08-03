@@ -706,7 +706,7 @@ $('#btnDrive').onclick = async () => {
     st.textContent = 'Signing in to Google…';
     await getToken();
     st.textContent = 'Finding Drive folder…';
-    const root = await findOrCreateFolder('Vinyl', 'root');
+    const root = await findOrCreateFolder('Vinyl Snap', 'root');
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
     const folder = await findOrCreateFolder(folderName, root);
     let n = 0;
@@ -737,7 +737,7 @@ $('#btnDrive').onclick = async () => {
         });
       }
     }
-    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → Vinyl / ${folderName}`;
+    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → Vinyl Snap / ${folderName}`;
     toast('Uploaded to Google Drive ✓');
   } catch (e) {
     console.error(e);
