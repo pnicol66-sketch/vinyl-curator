@@ -62,6 +62,8 @@ nothing else in your Drive.
   etched characters catch shadows; use the zoom slider to get close.
 - If auto-detect misses, drag the four amber corners, or tap **Auto** to retry / **Full**
   to keep the whole frame. **⟳** rotates the saved photo in 90° steps.
+- Label shots crop as a **circle** (saved on a white square): drag inside the circle to
+  move it, drag its edge to resize.
 
 ## Privacy
 

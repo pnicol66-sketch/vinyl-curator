@@ -34,7 +34,7 @@ const SHOTS = [
 ];
 const TIPS = {
   cover: 'Lay flat on a plain, contrasting background and fill the frame — the outline is detected automatically.',
-  label: 'Center the disc and fill the frame. A contrasting background helps auto-crop.',
+  label: 'Center the label and fill the frame — the round outline is detected and cropped as a circle.',
   matrix: 'Get close to the run-out groove. Angle the disc under light (try 🔦) so the etching casts shadows.',
 };
 
@@ -297,16 +297,21 @@ async function snap() {
 }
 
 /* ---------- review / crop ---------- */
-let review = { bmp: null, quad: null, rot: 0, scale: 1, dpr: 1, dragging: -1 };
+let review = { bmp: null, quad: null, circle: null, shape: 'quad', rot: 0, scale: 1, dpr: 1, dragging: null };
 function freeReview() {
   if (review.bmp && review.bmp.close) review.bmp.close();
   review.bmp = null;
   review.quad = null;
+  review.circle = null;
 }
 function openReview(bmp) {
   stopCam();
   freeReview();
-  review = { bmp, quad: null, rot: 0, scale: 1, dpr: 1, dragging: -1 };
+  review = {
+    bmp, quad: null, circle: null,
+    shape: curShot && curShot.type === 'label' ? 'circle' : 'quad',
+    rot: 0, scale: 1, dpr: 1, dragging: null,
+  };
   $('#btnRotate').textContent = '⟳ 0°';
   show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot) });
   layoutReview();
@@ -340,6 +345,14 @@ function defaultQuad() {
   return [{ x: w * m, y: h * m }, { x: w * (1 - m), y: h * m },
           { x: w * (1 - m), y: h * (1 - m) }, { x: w * m, y: h * (1 - m) }];
 }
+function fullCircle() {
+  const w = review.bmp.width, h = review.bmp.height;
+  return { cx: w / 2, cy: h / 2, r: Math.min(w, h) / 2 };
+}
+function defaultCircle() {
+  const w = review.bmp.width, h = review.bmp.height;
+  return { cx: w / 2, cy: h / 2, r: 0.44 * Math.min(w, h) };
+}
 async function autoDetect() {
   if (!review.bmp) return;
   const bmp = review.bmp;
@@ -347,6 +360,26 @@ async function autoDetect() {
     review.quad = fullQuad();
     drawReview();
     toast('Full frame kept for dead wax — drag corners to crop if you like');
+    return;
+  }
+  if (curShot.type === 'label') {
+    const sc2 = Math.min(1, 560 / Math.max(bmp.width, bmp.height));
+    const sw2 = Math.max(2, Math.round(bmp.width * sc2));
+    const sh2 = Math.max(2, Math.round(bmp.height * sc2));
+    const c2 = document.createElement('canvas');
+    c2.width = sw2; c2.height = sh2;
+    const cx2 = c2.getContext('2d', { willReadFrequently: true });
+    cx2.drawImage(bmp, 0, 0, sw2, sh2);
+    let circ = null;
+    try { circ = Detect.detectCircle(cx2.getImageData(0, 0, sw2, sh2)); } catch (e) { console.error(e); }
+    if (circ) {
+      review.circle = { cx: circ.cx / sc2, cy: circ.cy / sc2, r: circ.r / sc2 };
+      toast('Circle detected ✓ — drag to move, drag the edge to resize');
+    } else {
+      review.circle = defaultCircle();
+      toast('Couldn’t find the circle — drag it into place');
+    }
+    drawReview();
     return;
   }
   const maxSide = 560;
@@ -376,6 +409,32 @@ function drawReview() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(review.bmp, 0, 0, canvas.width, canvas.height);
+  if (review.shape === 'circle') {
+    const c0 = review.circle;
+    if (!c0) return;
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.arc(c0.cx * s, c0.cy * s, c0.r * s, 0, Math.PI * 2, true);
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fill('evenodd');
+    ctx.beginPath();
+    ctx.arc(c0.cx * s, c0.cy * s, c0.r * s, 0, Math.PI * 2);
+    ctx.strokeStyle = '#f0a832';
+    ctx.lineWidth = 2 * review.dpr;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(c0.cx * s, c0.cy * s, 4.5 * review.dpr, 0, 7);
+    ctx.fillStyle = '#f0a832';
+    ctx.fill();
+    const hs = [[c0.cx, c0.cy - c0.r], [c0.cx + c0.r, c0.cy], [c0.cx, c0.cy + c0.r], [c0.cx - c0.r, c0.cy]];
+    for (const [hx, hy] of hs) {
+      ctx.beginPath(); ctx.arc(hx * s, hy * s, 9 * review.dpr, 0, 7);
+      ctx.fillStyle = 'rgba(240,168,50,.55)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(hx * s, hy * s, 4 * review.dpr, 0, 7);
+      ctx.fillStyle = '#f0a832'; ctx.fill();
+    }
+    return;
+  }
   const q = review.quad;
   if (!q) return;
   ctx.beginPath();
@@ -405,10 +464,22 @@ function drawReview() {
 }
 const rc = $('#reviewCanvas');
 rc.addEventListener('pointerdown', e => {
-  if (!review.quad) return;
   const r = rc.getBoundingClientRect();
   const px = (e.clientX - r.left) / review.scale;
   const py = (e.clientY - r.top) / review.scale;
+  if (review.shape === 'circle') {
+    const c0 = review.circle;
+    if (!c0) return;
+    const d = Math.hypot(px - c0.cx, py - c0.cy);
+    const tol = 44 / review.scale;
+    if (Math.abs(d - c0.r) <= tol) review.dragging = 'resize';
+    else if (d < c0.r) review.dragging = 'move';
+    else return;
+    rc.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    return;
+  }
+  if (!review.quad) return;
   let best = -1, bd = Infinity;
   review.quad.forEach((p, i) => {
     const d = Math.hypot(p.x - px, p.y - py);
@@ -421,19 +492,32 @@ rc.addEventListener('pointerdown', e => {
   }
 });
 rc.addEventListener('pointermove', e => {
-  if (review.dragging < 0 || !review.quad) return;
+  if (review.dragging === null || review.dragging === -1 || !review.bmp) return;
   const r = rc.getBoundingClientRect();
   const w = review.bmp.width, h = review.bmp.height;
   const px = Math.max(0, Math.min(w, (e.clientX - r.left) / review.scale));
   const py = Math.max(0, Math.min(h, (e.clientY - r.top) / review.scale));
-  review.quad[review.dragging] = { x: px, y: py };
+  if (review.shape === 'circle') {
+    const c0 = review.circle;
+    if (!c0) return;
+    if (review.dragging === 'move') { c0.cx = px; c0.cy = py; }
+    else if (review.dragging === 'resize') {
+      c0.r = Math.max(24, Math.hypot(px - c0.cx, py - c0.cy));
+    }
+  } else if (typeof review.dragging === 'number' && review.quad) {
+    review.quad[review.dragging] = { x: px, y: py };
+  }
   drawReview();
 });
-rc.addEventListener('pointerup', () => { review.dragging = -1; });
-rc.addEventListener('pointercancel', () => { review.dragging = -1; });
+rc.addEventListener('pointerup', () => { review.dragging = null; });
+rc.addEventListener('pointercancel', () => { review.dragging = null; });
 
 $('#btnAuto').onclick = autoDetect;
-$('#btnFull').onclick = () => { review.quad = fullQuad(); drawReview(); };
+$('#btnFull').onclick = () => {
+  if (review.shape === 'circle') review.circle = fullCircle();
+  else review.quad = fullQuad();
+  drawReview();
+};
 $('#btnRotate').onclick = () => {
   review.rot = (review.rot + 1) % 4;
   $('#btnRotate').textContent = `⟳ ${review.rot * 90}°`;
@@ -459,16 +543,40 @@ function rotateCanvas(c, rot) {
 }
 async function saveShot() {
   if (!review.bmp) return;
-  if (!review.quad) { review.quad = defaultQuad(); drawReview(); }
+  if (review.shape === 'circle') {
+    if (!review.circle) { review.circle = defaultCircle(); drawReview(); }
+  } else if (!review.quad) {
+    review.quad = defaultQuad(); drawReview();
+  }
   const btn = $('#btnSave');
   btn.disabled = true;
   btn.textContent = 'Saving…';
   await new Promise(r => setTimeout(r, 40)); // let the button repaint
   try {
-    const bmp = review.bmp, q = review.quad;
-    const { w: ow, h: oh } = Detect.outputSize(q, settings.maxOut);
+    const bmp = review.bmp;
     let outCanvas;
-    if (isAxisRect(q)) {
+    if (review.shape === 'circle') {
+      const c0 = review.circle;
+      const S = Math.max(2, Math.min(Math.round(2 * c0.r), settings.maxOut));
+      outCanvas = document.createElement('canvas');
+      outCanvas.width = S; outCanvas.height = S;
+      const octx = outCanvas.getContext('2d');
+      const k = S / (2 * c0.r);
+      const sx0 = Math.max(0, c0.cx - c0.r), sy0 = Math.max(0, c0.cy - c0.r);
+      const sx1 = Math.min(bmp.width, c0.cx + c0.r), sy1 = Math.min(bmp.height, c0.cy + c0.r);
+      if (sx1 > sx0 && sy1 > sy0) {
+        octx.drawImage(bmp, sx0, sy0, sx1 - sx0, sy1 - sy0,
+          (sx0 - (c0.cx - c0.r)) * k, (sy0 - (c0.cy - c0.r)) * k,
+          (sx1 - sx0) * k, (sy1 - sy0) * k);
+      }
+      octx.globalCompositeOperation = 'destination-in';
+      octx.beginPath(); octx.arc(S / 2, S / 2, S / 2, 0, 7); octx.fill();
+      octx.globalCompositeOperation = 'destination-over';
+      octx.fillStyle = '#fff'; octx.fillRect(0, 0, S, S);
+      octx.globalCompositeOperation = 'source-over';
+    } else if (isAxisRect(review.quad)) {
+      const q = review.quad;
+      const { w: ow, h: oh } = Detect.outputSize(q, settings.maxOut);
       const x0 = Math.min(q[0].x, q[3].x), y0 = Math.min(q[0].y, q[1].y);
       const cw = Math.max(1, Math.max(q[1].x, q[2].x) - x0);
       const chh = Math.max(1, Math.max(q[2].y, q[3].y) - y0);
@@ -476,6 +584,8 @@ async function saveShot() {
       outCanvas.width = ow; outCanvas.height = oh;
       outCanvas.getContext('2d').drawImage(bmp, x0, y0, cw, chh, 0, 0, ow, oh);
     } else {
+      const q = review.quad;
+      const { w: ow, h: oh } = Detect.outputSize(q, settings.maxOut);
       const sc = document.createElement('canvas');
       sc.width = bmp.width; sc.height = bmp.height;
       const sctx = sc.getContext('2d', { willReadFrequently: true });
