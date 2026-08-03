@@ -213,6 +213,81 @@ const Detect = (() => {
     return quad;
   }
 
+  // Circle detection (round labels/discs): 2-stage Hough — edge points vote for
+  // the center along their gradient rays, then a radius histogram (normalized by
+  // circumference) picks the circle. Prefers the outermost strong circle.
+  function detectCircle(imageData) {
+    const w = imageData.width, h = imageData.height;
+    if (w < 40 || h < 40) return null;
+    const gray = blur3(toGray(imageData), w, h);
+    const { mag, ang } = sobel(gray, w, h);
+    const pts = edgePoints(mag, ang, w, h);
+    if (pts.count < 60) return null;
+    const minDim = Math.min(w, h);
+    const rMin = Math.max(12, Math.round(minDim * 0.12));
+    const rMax = Math.round(minDim * 0.62);
+    const G = 4, gw = Math.ceil(w / G), gh = Math.ceil(h / G);
+    const accC = new Int32Array(gw * gh);
+    const RSTEP2 = 3;
+    for (let i = 0; i < pts.count; i++) {
+      const x = pts.xs[i], y = pts.ys[i], a = pts.na[i];
+      const dx = Math.cos(a), dy = Math.sin(a);
+      for (let s = -1; s <= 1; s += 2) {
+        const ddx = dx * s * RSTEP2, ddy = dy * s * RSTEP2;
+        let cx = x + dx * s * rMin, cy = y + dy * s * rMin;
+        for (let r = rMin; r <= rMax; r += RSTEP2, cx += ddx, cy += ddy) {
+          if (cx < 0 || cy < 0 || cx >= w || cy >= h) break;
+          accC[((cy / G) | 0) * gw + ((cx / G) | 0)]++;
+        }
+      }
+    }
+    let peak = 0, pIdx = 0;
+    for (let i = 0; i < accC.length; i++) if (accC[i] > peak) { peak = accC[i]; pIdx = i; }
+    if (peak < 20) return null;
+    const pgx = pIdx % gw, pgy = (pIdx / gw) | 0;
+    let wsum = 0, sx = 0, sy = 0;
+    for (let oy = -1; oy <= 1; oy++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        const gx2 = pgx + ox, gy2 = pgy + oy;
+        if (gx2 < 0 || gy2 < 0 || gx2 >= gw || gy2 >= gh) continue;
+        const v = accC[gy2 * gw + gx2];
+        wsum += v; sx += v * (gx2 + 0.5) * G; sy += v * (gy2 + 0.5) * G;
+      }
+    }
+    const cx = sx / wsum, cy = sy / wsum;
+    const bins = new Float32Array(rMax + 3);
+    const HP = Math.PI / 2;
+    for (let i = 0; i < pts.count; i++) {
+      const x = pts.xs[i], y = pts.ys[i];
+      const d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+      if (d < rMin || d > rMax) continue;
+      let ra = Math.atan2(y - cy, x - cx);
+      if (ra >= HP) ra -= Math.PI; else if (ra < -HP) ra += Math.PI;
+      let diff = Math.abs(ra - pts.na[i]);
+      if (diff > HP) diff = Math.PI - diff;
+      if (diff > 0.35) continue;
+      bins[Math.round(d)]++;
+    }
+    const windowScore = r => {
+      let v = 0;
+      for (let o = -2; o <= 2; o++) v += bins[Math.max(0, Math.min(rMax + 2, r + o))];
+      return v / (2 * Math.PI * r);
+    };
+    let best = null;
+    for (let r = rMin; r <= rMax; r++) {
+      const score = windowScore(r);
+      if (score < 0.25) continue;
+      if (!best || score > best.score) best = { r, score };
+    }
+    if (!best) return null;
+    let chosen = best;
+    for (let r = best.r + 5; r <= rMax; r++) {
+      const score = windowScore(r);
+      if (score >= 0.8 * best.score && r > chosen.r + 4) chosen = { r, score };
+    }
+    return { cx, cy, r: chosen.r };
+  }
+
   function outputSize(quad, maxOut) {
     const d = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
     const W = (d(quad[0], quad[1]) + d(quad[3], quad[2])) / 2;
@@ -283,5 +358,5 @@ const Detect = (() => {
     return new ImageData(out, outW, outH);
   }
 
-  return { detect, outputSize, warp };
+  return { detect, detectCircle, outputSize, warp };
 })();
