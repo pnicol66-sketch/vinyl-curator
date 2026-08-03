@@ -101,7 +101,7 @@ async function goHome() {
   for (const al of albums) {
     const shots = await shotsFor(al.id);
     const visible = SHOTS.filter(s => s.disc <= al.discs);
-    const done = shots.filter(s => s.status === 'done').length;
+    const done = shots.filter(s => s.status === 'done' || s.status === 'text').length;
     const row = document.createElement('div');
     row.className = 'albumcard';
     row.innerHTML =
@@ -169,13 +169,17 @@ async function renderShotList() {
   for (const def of visible) {
     const rec = byId[def.id];
     const status = rec?.status || '';
-    if (status === 'done') done++;
+    if (status === 'done' || status === 'text') done++;
     const item = document.createElement('button');
     item.className = 'shotitem';
+    const thumbChar = status === 'done' ? '' : status === 'text' ? '⌨' : status === 'skipped' ? '—' : '📷';
+    const nameExtra = status === 'text'
+      ? ` <em>· ${esc(rec.text.length > 22 ? rec.text.slice(0, 22) + '…' : rec.text)}</em>`
+      : def.opt ? ' <em>· optional</em>' : '';
     item.innerHTML =
-      `<span class="thumb">${status === 'done' ? '' : status === 'skipped' ? '—' : '📷'}</span>` +
-      `<span class="shotname">${pad2(def.n)} ${esc(def.name)}${def.opt ? ' <em>· optional</em>' : ''}</span>` +
-      `<span class="shotstate ${status}">${status === 'done' ? '✓' : status === 'skipped' ? 'skipped' : ''}</span>`;
+      `<span class="thumb">${thumbChar}</span>` +
+      `<span class="shotname">${pad2(def.n)} ${esc(def.name)}${nameExtra}</span>` +
+      `<span class="shotstate ${status === 'text' ? 'done' : status}">${status === 'done' || status === 'text' ? '✓' : status === 'skipped' ? 'skipped' : ''}</span>`;
     if (status === 'done') {
       const url = URL.createObjectURL(rec.blob);
       thumbUrls.push(url);
@@ -183,14 +187,21 @@ async function renderShotList() {
       img.src = url;
       item.querySelector('.thumb').appendChild(img);
     }
-    item.onclick = () => (status === 'done' ? openViewer(def, rec) : openCamera(def));
+    item.onclick = () => {
+      if (status === 'done') openViewer(def, rec);
+      else if (status === 'text') openTextEntry(def, rec);
+      else openCamera(def);
+    };
     list.appendChild(item);
   }
   $('#albumProgress').textContent = `${done}/${visible.length}`;
   $('#btnExport').disabled = done === 0;
 }
+function baseNameFor(def) {
+  return sanitize(`${curAlbum.artist} - ${curAlbum.title} - ${pad2(def.n)} ${def.name}`);
+}
 function filenameFor(def) {
-  return sanitize(`${curAlbum.artist} - ${curAlbum.title} - ${pad2(def.n)} ${def.name}`) + '.jpg';
+  return baseNameFor(def) + '.jpg';
 }
 
 /* ---------- camera ---------- */
@@ -202,6 +213,8 @@ async function openCamera(def) {
   $('#camLabel').textContent = `${pad2(def.n)} · ${def.name}`;
   $('#camTip').textContent = TIPS[def.type] || '';
   $('#btnSkip').classList.toggle('hidden', !def.opt);
+  $('#btnTypeIt').classList.toggle('hidden', def.type !== 'matrix');
+  $('#btnType2').classList.toggle('hidden', def.type !== 'matrix');
   $('#camFallback').classList.add('hidden');
   await startCam();
 }
@@ -611,6 +624,32 @@ async function saveShot() {
   }
 }
 
+/* ---------- manual text entry (matrix / dead wax) ---------- */
+async function openTextEntry(def, rec) {
+  stopCam();
+  freeReview();
+  curShot = def;
+  if (rec === undefined) rec = await dbGet('shots', [curAlbum.id, def.id]);
+  $('#inShotText').value = (rec && rec.status === 'text' && rec.text) || '';
+  $('#btnTextDelete').classList.toggle('hidden', !(rec && rec.status === 'text'));
+  show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
+}
+$('#btnTypeIt').onclick = () => openTextEntry(curShot);
+$('#btnType2').onclick = () => openTextEntry(curShot);
+$('#btnTextSave').onclick = async () => {
+  const t = $('#inShotText').value.trim();
+  if (!t) return toast('Type the matrix text first, or go back');
+  await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'text', text: t, when: Date.now() });
+  backToAlbum();
+  toast('Saved ✓');
+};
+$('#btnTextPhoto').onclick = () => openCamera(curShot);
+$('#btnTextDelete').onclick = async () => {
+  if (!confirm('Delete this text entry?')) return;
+  await dbDel('shots', [curAlbum.id, curShot.id]);
+  backToAlbum();
+};
+
 /* ---------- viewer ---------- */
 let viewShot = null, viewerUrl = null;
 function openViewer(def, rec) {
@@ -637,10 +676,13 @@ async function openExport() {
   exportItems = SHOTS
     .filter(def => def.disc <= curAlbum.discs)
     .map(def => ({ def, rec: byId[def.id] }))
-    .filter(x => x.rec && x.rec.status === 'done')
-    .map(x => ({ name: filenameFor(x.def), blob: x.rec.blob }));
+    .filter(x => x.rec && (x.rec.status === 'done' || x.rec.status === 'text'))
+    .map(x => x.rec.status === 'text'
+      ? { name: baseNameFor(x.def) + '.txt', blob: new Blob([x.rec.text + '\n'], { type: 'text/plain' }), mime: 'text/plain' }
+      : { name: filenameFor(x.def), blob: x.rec.blob, mime: 'image/jpeg' });
+  const fmtSize = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
   $('#exportList').innerHTML = exportItems
-    .map(i => `<div class="exportrow"><div>${esc(i.name)}</div><span>${(i.blob.size / 1048576).toFixed(1)} MB</span></div>`)
+    .map(i => `<div class="exportrow"><div>${esc(i.name)}</div><span>${fmtSize(i.blob.size)}</span></div>`)
     .join('');
   $('#exportStatus').textContent = '';
   $('#btnDrive').textContent = settings.clientId
@@ -649,7 +691,7 @@ async function openExport() {
   show('scr-export', { title: 'Save photos', back: backToAlbum });
 }
 $('#btnShare').onclick = async () => {
-  const files = exportItems.map(i => new File([i.blob], i.name, { type: 'image/jpeg' }));
+  const files = exportItems.map(i => new File([i.blob], i.name, { type: i.mime || 'image/jpeg' }));
   if (navigator.canShare && navigator.canShare({ files })) {
     try {
       await navigator.share({ files });
@@ -828,7 +870,7 @@ $('#btnDrive').onclick = async () => {
       if (existing.files && existing.files.length) {
         await drive(`https://www.googleapis.com/upload/drive/v3/files/${existing.files[0].id}?uploadType=media&fields=id`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'image/jpeg' },
+          headers: { 'Content-Type': item.mime },
           body: item.blob,
         });
       } else {
@@ -836,7 +878,7 @@ $('#btnDrive').onclick = async () => {
         const body = new Blob([
           `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
           JSON.stringify({ name: item.name, parents: [folder] }),
-          `\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`,
+          `\r\n--${boundary}\r\nContent-Type: ${item.mime}\r\n\r\n`,
           item.blob,
           `\r\n--${boundary}--`,
         ]);
