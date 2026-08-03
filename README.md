@@ -41,7 +41,7 @@ On the export screen tap **Share…**, pick **Drive** in the Android share sheet
 folder, done. The photos keep their generated filenames.
 
 **B. Direct upload (one-time 5-minute setup).**
-The app can upload straight into `My Drive / Vinyl / <Artist>_<Album>/`, updating
+The app can upload straight into `My Drive / Vinyl Snap / <Artist>_<Album>/`, updating
 files in place if you re-shoot. It needs a free Google OAuth Client ID:
 
 1. console.cloud.google.com → create a project.
