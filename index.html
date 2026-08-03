@@ -56,11 +56,12 @@ button { font: inherit; color: inherit; }
 .stack > * + * { margin-top: 12px; }
 .empty { color: var(--dim); text-align: center; padding: 40px 12px; }
 label.field { display: block; font-size: 13px; color: var(--dim); margin: 16px 0 6px; }
-input[type=text], select {
+input[type=text], select, textarea {
   width: 100%; padding: 13px 12px; font-size: 16px; border-radius: 11px;
   background: var(--card2); border: 1px solid var(--line); color: var(--text); outline: none;
 }
-input[type=text]:focus { border-color: var(--accent); }
+input[type=text]:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; }
 .radio-row { display: flex; gap: 10px; }
 .radio-row label {
   flex: 1; text-align: center; padding: 13px; border-radius: 11px; font-size: 15px;
@@ -115,7 +116,7 @@ input[type=text]:focus { border-color: var(--accent); }
   background: linear-gradient(transparent, rgba(0,0,0,.6));
 }
 #zoom { width: 70%; accent-color: var(--accent); }
-.camrow { display: flex; align-items: center; gap: 28px; }
+.camrow { display: flex; align-items: center; gap: 20px; }
 #btnSnap {
   width: 72px; height: 72px; border-radius: 50%; border: 4px solid #fff;
   background: rgba(255,255,255,.25);
@@ -222,12 +223,14 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
         <button id="btnTorch" class="iconbtn2 hidden" aria-label="Torch">🔦</button>
         <button id="btnSnap" aria-label="Take photo"></button>
         <button id="btnImport" class="iconbtn2" aria-label="Import from gallery">🖼</button>
+        <button id="btnTypeIt" class="iconbtn2 hidden" aria-label="Type it instead">⌨</button>
       </div>
     </div>
     <div id="camFallback" class="hidden">
       <div style="font-size:40px">📷</div>
       <div id="camFallbackMsg"></div>
       <button id="btnImport2" class="secondary" style="max-width:320px">Take / choose photo with camera app</button>
+      <button id="btnType2" class="secondary hidden" style="max-width:320px">⌨ Type it in instead</button>
     </div>
     <input type="file" id="fileInput" accept="image/*" class="hidden">
   </div>
@@ -251,6 +254,17 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <button id="btnDrive" class="primary">Upload to Google Drive</button>
     <button id="btnShare" class="secondary">Share… (send to Drive app, no setup)</button>
     <button id="btnZip" class="secondary">Download all as ZIP</button>
+  </div>
+</section>
+
+<section id="scr-text">
+  <label class="field" for="inShotText">Matrix / dead wax text — exactly as etched or stamped</label>
+  <textarea id="inShotText" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. ST-A-681234-B-1"></textarea>
+  <div style="height:20px"></div>
+  <div class="stack">
+    <button id="btnTextSave" class="primary">Save text</button>
+    <button id="btnTextPhoto" class="secondary">📷 Take a photo instead</button>
+    <button id="btnTextDelete" class="secondary danger hidden">Delete this entry</button>
   </div>
 </section>
 

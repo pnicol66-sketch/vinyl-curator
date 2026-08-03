@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'vinylsnap-v5';
+const CACHE = 'vinylsnap-v6';
 const ASSETS = ['./', './index.html', './app.js', './detect.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', e => {

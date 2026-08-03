@@ -64,6 +64,8 @@ nothing else in your Drive.
   to keep the whole frame. **⟳** rotates the saved photo in 90° steps.
 - Label shots crop as a **circle** (saved on a white square): drag inside the circle to
   move it, drag its edge to resize.
+- Matrix / dead-wax entries can be **typed instead of photographed**: tap the ⌨ button on
+  the camera screen. Typed entries export as matching `.txt` files next to the photos.
 
 ## Privacy
 
