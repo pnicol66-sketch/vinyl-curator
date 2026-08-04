@@ -54,6 +54,37 @@ files in place if you re-shoot. It needs a free Google OAuth Client ID:
 The app only requests the `drive.file` scope — it can only see files/folders it created,
 nothing else in your Drive.
 
+## The Google Sheet helper (sheet-script.gs)
+
+`sheet-script.gs` is a bound Apps Script for the Vinyl Project Google Sheet. Install it by
+pasting the file's contents into Extensions → Apps Script (replacing what's there), saving,
+and reloading the sheet. It adds two menus:
+
+**Vinyl Curator** — imports albums from `My Drive / Vinyl Curator` into the sheet
+(photo thumbnails in the matching cells, typed matrix text filled in, never overwriting),
+plus sorting, For Sale / Sold moves, folder-tag maintenance, and sheet formatting.
+
+**Vinyl Research** — AI pressing research on your album rows:
+
+1. One-time setup: create an API key at console.anthropic.com (Billing → add credits,
+   $5 is plenty to start; API Keys → Create Key), then Vinyl Research →
+   **Set Anthropic API key…** and paste it. The key is stored privately in your Google
+   account, never in the sheet.
+2. **Research albums with AI…** — tick the albums, pick the model (Claude Opus 5 —
+   deepest research, recommended; Claude Sonnet 5 — faster and about a third of the cost).
+3. For each album the AI receives the row's photos (covers, labels, dead-wax close-ups at
+   high detail), typed matrix numbers, and current row data, then researches with live web
+   search following the built-in Vinyl Research Reference Guide (Discogs variant first,
+   bsnpubs/45worlds label dating, Popsike + Discogs sales history for value — always
+   pricing the variant, never the master release).
+4. Results (Label Name, Label Number, Mono/Stereo, Year, LP Notes, General Notes,
+   Price Guide) appear in an approval screen with the current cell values alongside —
+   every field editable. **Approve + import** writes them into the matching columns;
+   **Research further…** sends your typed guidance back for another round; **Skip**
+   moves on without touching the sheet.
+
+Budget roughly 1–4 minutes and $0.10–0.50 per album with Opus 5.
+
 ## Shooting tips
 
 - Lay covers and discs on a plain background that contrasts with them (light for dark
