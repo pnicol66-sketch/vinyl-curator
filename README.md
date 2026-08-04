@@ -1,4 +1,4 @@
-# Vinyl Snap
+# Vinyl Curator
 
 A camera app for archiving vinyl records on an Android phone (built for a Motorola Razr,
 works on any modern phone). It walks you through a fixed checklist of shots per album,
@@ -25,12 +25,12 @@ The app is a PWA — a set of static files that must be hosted at an **https** a
 (Chrome only allows camera access over https). The easiest free option is GitHub Pages:
 
 1. Create a free account at github.com (if you don't have one).
-2. Create a new **public** repository, e.g. `vinyl-snap`.
+2. Create a new **public** repository, e.g. `vinyl-curator`.
 3. Upload the files in this folder (`index.html`, `app.js`, `detect.js`,
    `manifest.webmanifest`, `sw.js`, `icon.svg`) — "uploading an existing file" on the
    repo page works from the browser, no git needed.
 4. Repo → Settings → Pages → Source: "Deploy from a branch" → branch `main`, folder `/ (root)`.
-5. After a minute your app is live at `https://YOURNAME.github.io/vinyl-snap/`.
+5. After a minute your app is live at `https://YOURNAME.github.io/vinyl-curator/`.
 6. Open that address in Chrome on the phone → menu (⋮) → **Add to Home screen**.
    It installs like an app and works offline after the first load.
 
@@ -41,7 +41,7 @@ On the export screen tap **Share…**, pick **Drive** in the Android share sheet
 folder, done. The photos keep their generated filenames.
 
 **B. Direct upload (one-time 5-minute setup).**
-The app can upload straight into `My Drive / Vinyl Snap / <Artist>_<Album>/`, updating
+The app can upload straight into `My Drive / Vinyl Curator / <Artist>_<Album>/`, updating
 files in place if you re-shoot. It needs a free Google OAuth Client ID:
 
 1. console.cloud.google.com → create a project.

@@ -1,4 +1,4 @@
-# Local test server for Vinyl Snap (PowerShell, no dependencies).
+# Local test server for Vinyl Curator (PowerShell, no dependencies).
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add('http://localhost:8321/')
