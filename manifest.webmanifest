@@ -1,6 +1,6 @@
 {
-  "name": "Vinyl Snap",
-  "short_name": "Vinyl Snap",
+  "name": "Vinyl Curator",
+  "short_name": "Vinyl Curator",
   "description": "Photograph vinyl records — covers, labels, and dead wax — auto-crop, auto-name, and save to Google Drive.",
   "start_url": "./",
   "scope": "./",

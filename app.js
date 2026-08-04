@@ -77,7 +77,7 @@ async function saveSettings() { await dbPut('kv', { ...settings }, 'settings'); 
 
 /* ---------- navigation ---------- */
 let backAction = null;
-function show(id, { title = 'Vinyl Snap', back = null, gear = false } = {}) {
+function show(id, { title = 'Vinyl Curator', back = null, gear = false } = {}) {
   $$('main > section').forEach(s => s.classList.toggle('active', s.id === id));
   $('#title').textContent = title;
   backAction = back;
@@ -91,7 +91,7 @@ $('#btnSettings').onclick = () => openSettings();
 /* ---------- home ---------- */
 async function goHome() {
   stopCam();
-  show('scr-home', { title: 'Vinyl Snap', gear: true });
+  show('scr-home', { title: 'Vinyl Curator', gear: true });
   const albums = (await dbAll('albums')).sort((a, b) => b.created - a.created);
   const list = $('#albumList');
   list.innerHTML = '';
@@ -858,7 +858,7 @@ $('#btnDrive').onclick = async () => {
     st.textContent = 'Signing in to Google…';
     await getToken();
     st.textContent = 'Finding Drive folder…';
-    const root = await findOrCreateFolder('Vinyl Snap', 'root');
+    const root = await findOrCreateFolder('Vinyl Curator', 'root');
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
     const folder = await findOrCreateFolder(folderName, root);
     let n = 0;
@@ -889,7 +889,7 @@ $('#btnDrive').onclick = async () => {
         });
       }
     }
-    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → Vinyl Snap / ${folderName}`;
+    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → Vinyl Curator / ${folderName}`;
     toast('Uploaded to Google Drive ✓');
   } catch (e) {
     console.error(e);
