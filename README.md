@@ -85,6 +85,23 @@ plus sorting, For Sale / Sold moves, folder-tag maintenance, and sheet formattin
 
 Budget roughly 1–4 minutes and $0.10–0.50 per album with Opus 5.
 
+## Sharing it with another collector
+
+The whole system travels with two links — see [INSTALL.md](INSTALL.md) for the
+step-by-step guide a new user can follow on their own:
+
+1. **The app**: they open https://pnicol66-sketch.github.io/vinyl-curator/ on their phone
+   and Add to Home screen. Their photos and settings stay on their phone.
+2. **The sheet**: they open the template
+   (https://docs.google.com/spreadsheets/d/1yB7PvMQU4R2pLpuuX_Dr13Eob8cUR2kKNTOAKARwJcY/copy)
+   and click **Make a copy** — the bound script travels with the copy, so their private
+   copy has all the menus wired up. On first use they authorize the script (the
+   "unverified app" warning is normal) and add their **own** Anthropic API key for
+   research; nothing of yours is shared and they pay for their own usage.
+
+Copied sheets don't track script updates — new users re-paste `sheet-script.gs` from this
+repo's raw URL when you ship improvements (same routine as the original sheet).
+
 ## Shooting tips
 
 - Lay covers and discs on a plain background that contrasts with them (light for dark
@@ -109,3 +126,8 @@ upload to your own Google Drive.
 Run `powershell -ExecutionPolicy Bypass -File serve.ps1` in this folder and open
 http://localhost:8321/ — on localhost the camera works without https (or use the 🖼 import
 button to test with existing image files).
+
+## License
+
+© 2026 pnicol66. Shared for personal use; please don't redistribute the app, the sheet
+template, or the script without permission — contact pnicol66@gmail.com.
