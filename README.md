@@ -54,11 +54,11 @@ files in place if you re-shoot. It needs a free Google OAuth Client ID:
 The app only requests the `drive.file` scope — it can only see files/folders it created,
 nothing else in your Drive.
 
-## The Google Sheet helper (sheet-script.gs)
+## The Google Sheet helper
 
-`sheet-script.gs` is a bound Apps Script for the Vinyl Project Google Sheet. Install it by
-pasting the file's contents into Extensions → Apps Script (replacing what's there), saving,
-and reloading the sheet. It adds two menus:
+The Vinyl Project Google Sheet has a bound Apps Script (kept in a private companion repo —
+it travels automatically with copies of the sheet, so there's nothing to install beyond
+copying the template). It adds these menus:
 
 **Vinyl Curator** — imports albums from `My Drive / Vinyl Curator` into the sheet
 (photo thumbnails in the matching cells, typed matrix text filled in, never overwriting),
@@ -99,8 +99,11 @@ step-by-step guide a new user can follow on their own:
    "unverified app" warning is normal) and add their **own** Anthropic API key for
    research; nothing of yours is shared and they pay for their own usage.
 
-Copied sheets don't track script updates — new users re-paste `sheet-script.gs` from this
-repo's raw URL when you ship improvements (same routine as the original sheet).
+Use is by permission: the menus check the user's Google account against the owner's
+license list, so add their email to the Allowlist tab of the "Vinyl Curator Licenses"
+sheet before (or after — it checks daily) sending them the links. Copied sheets don't
+track script updates — send licensed users the new script to paste when you ship
+improvements.
 
 ## Shooting tips
 

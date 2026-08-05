@@ -56,14 +56,14 @@ for what you use — typically **$0.10–0.50 and 1–4 minutes per album**.
 
 ## Getting updates
 
-Your copied sheet doesn't auto-update. When the script improves, re-paste it (30 seconds):
-open the raw source at
-**https://raw.githubusercontent.com/pnicol66-sketch/vinyl-curator/main/sheet-script.gs**,
-select all → copy, then in your sheet **Extensions → Apps Script** → select everything in
-the editor → paste → save (💾) → reload the sheet. The phone app updates itself.
+Your copied sheet doesn't auto-update. When the script improves, pnicol66 will send you
+the new version — paste it in (30 seconds): **Extensions → Apps Script** → select
+everything in the editor → paste the new script over it → save (💾) → reload the sheet.
+The phone app updates itself.
 
 ## License
 
-Vinyl Curator is shared for **personal use** by permission of the author. Please don't
-redistribute the app, sheet template, or script without asking first —
-contact **pnicol66@gmail.com**.
+Vinyl Curator is shared for **personal use** by permission of the author, and the sheet
+menus check that your Google account has been given access — if you see a "not licensed"
+message, or to ask for access in the first place, contact **pnicol66@gmail.com**. Please
+don't redistribute the app, sheet template, or script without asking first.
