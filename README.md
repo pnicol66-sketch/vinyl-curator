@@ -7,17 +7,18 @@ fine-tune), names every file from the label artist + album, and saves the set to
 
 ## The shot checklist (per album)
 
-01 Front Cover · 02 Back Cover · 03 Other ·
-04–07 Side 1–4 Labels ·
-08–15 Side 1–4 Matrix and Dead Wax Other
+01 Front Cover · 02 Front Cover Grade · 03 Back Cover · 04 Back Cover Grade · 05 Other ·
+06–13 Side 1–4 Labels and Vinyl Grades ·
+14–21 Side 1–4 Matrix and Dead Wax Other
 
-A 1-disc album shows only sides 1–2 (9 shots); choosing "2 discs" adds sides 3–4.
+Grade entries (02, 04, 07, 09, 11, 13) are typed, not photographed, and export as `.txt`.
+A 1-disc album shows only sides 1–2; choosing "2 discs" adds sides 3–4.
 "Other" and "Dead Wax Other" shots are optional and can be skipped.
 
 Files are named like:
 
     Fleetwood Mac - Rumours - 01 Front Cover.jpg
-    Fleetwood Mac - Rumours - 08 Side 1 Matrix.jpg
+    Fleetwood Mac - Rumours - 14 Side 1 Matrix.jpg
 
 ## Getting it on your phone
 
