@@ -77,7 +77,7 @@ async function shotsFor(albumId) {
 }
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', maxOut: 2400, quality: 0.92 };
+const settings = { clientId: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator' };
 async function loadSettings() { const s = await dbGet('kv', 'settings'); if (s) Object.assign(settings, s); }
 async function saveSettings() { await dbPut('kv', { ...settings }, 'settings'); }
 
@@ -870,7 +870,7 @@ $('#btnDrive').onclick = async () => {
     st.textContent = 'Signing in to Google…';
     await getToken();
     st.textContent = 'Finding Drive folder…';
-    const root = await findOrCreateFolder('Vinyl Curator', 'root');
+    const root = await findOrCreateFolder(settings.driveFolder || 'Vinyl Curator', 'root');
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
     const folder = await findOrCreateFolder(folderName, root);
     let n = 0;
@@ -901,7 +901,7 @@ $('#btnDrive').onclick = async () => {
         });
       }
     }
-    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → Vinyl Curator / ${folderName}`;
+    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${settings.driveFolder || 'Vinyl Curator'} / ${folderName}`;
     toast('Uploaded to Google Drive ✓');
   } catch (e) {
     console.error(e);
@@ -915,12 +915,14 @@ $('#btnDrive').onclick = async () => {
 /* ---------- settings ---------- */
 function openSettings() {
   $('#inClientId').value = settings.clientId;
+  $('#inDriveFolder').value = settings.driveFolder || 'Vinyl Curator';
   $('#inMaxOut').value = String(settings.maxOut);
   $('#inQuality').value = String(settings.quality);
   show('scr-settings', { title: 'Settings', back: goHome });
 }
 $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
+  settings.driveFolder = $('#inDriveFolder').value.trim() || 'Vinyl Curator';
   settings.maxOut = Number($('#inMaxOut').value) || 2400;
   settings.quality = Number($('#inQuality').value) || 0.92;
   await saveSettings();
