@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 1.2 · 6 August 2026**
+**Version 1.3 · 6 August 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
@@ -8,6 +8,7 @@ Contact: pnicol66@gmail.com · Personal use by permission; please don't redistri
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.3 | 2026-08-06 | After a successful save (Share, Drive upload, or ZIP) the app returns to the home screen. |
 | 1.2 | 2026-08-06 | The Drive folder for direct uploads is now configurable in the app's Settings (default "Vinyl Curator"). |
 | 1.1 | 2026-08-05 | First edition. Checklist in display order (01–21), typed cover & vinyl grade entries, automatic grade aggregates in the sheet, header-row locks, streamlined user menu. |
 
@@ -90,6 +91,8 @@ From the checklist tap **Save photos** — three options:
 - **Upload to Google Drive** (direct, one-time setup): uploads straight into the right folder, updating files in place on re-shoots. Needs a free Google OAuth Client ID — see Settings ⚙ for the steps.
 - **Download all as ZIP**.
 
+After a successful save the app returns to the home screen, ready for the next album.
+
 ### Settings ⚙
 
 Google OAuth Client ID (for direct upload), the **Drive folder for uploads** (default `Vinyl Curator` — leave it unless you have a reason to change it; the sheet imports from the folder of the same name), photo size (1600/2400/3200 px), JPEG quality, and **Delete ALL app data** (wipes the phone's local albums, photos, and settings — exported files in Drive are untouched).
@@ -152,4 +155,4 @@ Row 1's column names drive the import — the script finds columns by header tex
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v1.2 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v1.3 · © 2026 pnicol66*
