@@ -16,21 +16,27 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 
 /* ---------- shot definitions ---------- */
 const SHOTS = [
-  { id: 'front',    n: 1,  name: 'Front Cover',           type: 'cover',  disc: 1 },
-  { id: 'back',     n: 2,  name: 'Back Cover',            type: 'cover',  disc: 1 },
-  { id: 'other',    n: 3,  name: 'Other',                 type: 'cover',  disc: 1, opt: true },
-  { id: 's1label',  n: 4,  name: 'Side 1 Label',          type: 'label',  disc: 1 },
-  { id: 's2label',  n: 5,  name: 'Side 2 Label',          type: 'label',  disc: 1 },
-  { id: 's3label',  n: 6,  name: 'Side 3 Label',          type: 'label',  disc: 2 },
-  { id: 's4label',  n: 7,  name: 'Side 4 Label',          type: 'label',  disc: 2 },
-  { id: 's1matrix', n: 8,  name: 'Side 1 Matrix',         type: 'matrix', disc: 1 },
-  { id: 's1dwo',    n: 9,  name: 'Side 1 Dead Wax Other', type: 'matrix', disc: 1, opt: true },
-  { id: 's2matrix', n: 10, name: 'Side 2 Matrix',         type: 'matrix', disc: 1 },
-  { id: 's2dwo',    n: 11, name: 'Side 2 Dead Wax Other', type: 'matrix', disc: 1, opt: true },
-  { id: 's3matrix', n: 12, name: 'Side 3 Matrix',         type: 'matrix', disc: 2 },
-  { id: 's3dwo',    n: 13, name: 'Side 3 Dead Wax Other', type: 'matrix', disc: 2, opt: true },
-  { id: 's4matrix', n: 14, name: 'Side 4 Matrix',         type: 'matrix', disc: 2 },
-  { id: 's4dwo',    n: 15, name: 'Side 4 Dead Wax Other', type: 'matrix', disc: 2, opt: true },
+  { id: 'front',      n: 1,  name: 'Front Cover',           type: 'cover',  disc: 1 },
+  { id: 'frontgrade', n: 2,  name: 'Front Cover Grade',     type: 'grade',  disc: 1 },
+  { id: 'back',       n: 3,  name: 'Back Cover',            type: 'cover',  disc: 1 },
+  { id: 'backgrade',  n: 4,  name: 'Back Cover Grade',      type: 'grade',  disc: 1 },
+  { id: 'other',      n: 5,  name: 'Other',                 type: 'cover',  disc: 1, opt: true },
+  { id: 's1label',    n: 6,  name: 'Side 1 Label',          type: 'label',  disc: 1 },
+  { id: 's1grade',    n: 7,  name: 'Vinyl Grade Side 1',    type: 'grade',  disc: 1 },
+  { id: 's2label',    n: 8,  name: 'Side 2 Label',          type: 'label',  disc: 1 },
+  { id: 's2grade',    n: 9,  name: 'Vinyl Grade Side 2',    type: 'grade',  disc: 1 },
+  { id: 's3label',    n: 10, name: 'Side 3 Label',          type: 'label',  disc: 2 },
+  { id: 's3grade',    n: 11, name: 'Vinyl Grade Side 3',    type: 'grade',  disc: 2 },
+  { id: 's4label',    n: 12, name: 'Side 4 Label',          type: 'label',  disc: 2 },
+  { id: 's4grade',    n: 13, name: 'Vinyl Grade Side 4',    type: 'grade',  disc: 2 },
+  { id: 's1matrix',   n: 14, name: 'Side 1 Matrix',         type: 'matrix', disc: 1 },
+  { id: 's1dwo',      n: 15, name: 'Side 1 Dead Wax Other', type: 'matrix', disc: 1, opt: true },
+  { id: 's2matrix',   n: 16, name: 'Side 2 Matrix',         type: 'matrix', disc: 1 },
+  { id: 's2dwo',      n: 17, name: 'Side 2 Dead Wax Other', type: 'matrix', disc: 1, opt: true },
+  { id: 's3matrix',   n: 18, name: 'Side 3 Matrix',         type: 'matrix', disc: 2 },
+  { id: 's3dwo',      n: 19, name: 'Side 3 Dead Wax Other', type: 'matrix', disc: 2, opt: true },
+  { id: 's4matrix',   n: 20, name: 'Side 4 Matrix',         type: 'matrix', disc: 2 },
+  { id: 's4dwo',      n: 21, name: 'Side 4 Dead Wax Other', type: 'matrix', disc: 2, opt: true },
 ];
 const TIPS = {
   cover: 'Lay flat on a plain, contrasting background and fill the frame — the outline is detected automatically.',
@@ -172,7 +178,7 @@ async function renderShotList() {
     if (status === 'done' || status === 'text') done++;
     const item = document.createElement('button');
     item.className = 'shotitem';
-    const thumbChar = status === 'done' ? '' : status === 'text' ? '⌨' : status === 'skipped' ? '—' : '📷';
+    const thumbChar = status === 'done' ? '' : status === 'text' ? '⌨' : status === 'skipped' ? '—' : def.type === 'grade' ? '⌨' : '📷';
     const nameExtra = status === 'text'
       ? ` <em>· ${esc(rec.text.length > 22 ? rec.text.slice(0, 22) + '…' : rec.text)}</em>`
       : def.opt ? ' <em>· optional</em>' : '';
@@ -189,7 +195,7 @@ async function renderShotList() {
     }
     item.onclick = () => {
       if (status === 'done') openViewer(def, rec);
-      else if (status === 'text') openTextEntry(def, rec);
+      else if (status === 'text' || def.type === 'grade') openTextEntry(def, rec);
       else openCamera(def);
     };
     list.appendChild(item);
@@ -624,13 +630,19 @@ async function saveShot() {
   }
 }
 
-/* ---------- manual text entry (matrix / dead wax) ---------- */
+/* ---------- manual text entry (matrix / dead wax / vinyl grade) ---------- */
 async function openTextEntry(def, rec) {
   stopCam();
   freeReview();
   curShot = def;
   if (rec === undefined) rec = await dbGet('shots', [curAlbum.id, def.id]);
+  const isGrade = def.type === 'grade';
+  $('#inShotTextLabel').textContent = isGrade
+    ? (def.name.includes('Cover') ? 'Cover grade' : 'Vinyl grade for this side')
+    : 'Matrix / dead wax text — exactly as etched or stamped';
+  $('#inShotText').placeholder = isGrade ? 'e.g. VG+' : 'e.g. ST-A-681234-B-1';
   $('#inShotText').value = (rec && rec.status === 'text' && rec.text) || '';
+  $('#btnTextPhoto').classList.toggle('hidden', isGrade);
   $('#btnTextDelete').classList.toggle('hidden', !(rec && rec.status === 'text'));
   show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
 }
@@ -638,7 +650,7 @@ $('#btnTypeIt').onclick = () => openTextEntry(curShot);
 $('#btnType2').onclick = () => openTextEntry(curShot);
 $('#btnTextSave').onclick = async () => {
   const t = $('#inShotText').value.trim();
-  if (!t) return toast('Type the matrix text first, or go back');
+  if (!t) return toast(curShot.type === 'grade' ? 'Type the grade first, or go back' : 'Type the matrix text first, or go back');
   await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'text', text: t, when: Date.now() });
   backToAlbum();
   toast('Saved ✓');
