@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 1.3 · 6 August 2026**
+**Version 1.4 · 6 August 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
@@ -8,6 +8,7 @@ Contact: pnicol66@gmail.com · Personal use by permission; please don't redistri
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.4 | 2026-08-06 | New **Album Story** sheet column (right after Side 4): the album's background and history, filled in by AI pressing research. Existing sheets add it via **Vinyl Curator → Add Album Story column**. |
 | 1.3 | 2026-08-06 | After a successful save (Share, Drive upload, or ZIP) the app returns to the home screen. |
 | 1.2 | 2026-08-06 | The Drive folder for direct uploads is now configurable in the app's Settings (default "Vinyl Curator"). |
 | 1.1 | 2026-08-05 | First edition. Checklist in display order (01–21), typed cover & vinyl grade entries, automatic grade aggregates in the sheet, header-row locks, streamlined user menu. |
@@ -117,6 +118,7 @@ Access is by permission — if you see a "not licensed" message, contact pnicol6
 - **Format sheets** — text wrap, column widths, row heights, frozen headers, on all tabs.
 - **Recalculate cover + vinyl grades (all tabs)** — see aggregates below.
 - **Protect header rows (all tabs)** — see header lock below.
+- **Add Album Story column (one-time, all tabs)** — for sheets made before v1.4: inserts the **Album Story** column right after **Side 4** on every tab. Safe to run twice — it does nothing if the column already exists.
 
 ### Grade aggregates
 
@@ -136,7 +138,7 @@ Row 1's column names drive the import — the script finds columns by header tex
 
 1. Create an API key at **console.anthropic.com** (add ~$5 credits), then **Vinyl Research → Set Anthropic API key…** and paste it. The key is stored privately in your Google account, never in the sheet.
 2. **Vinyl Research → Research albums with AI…** — tick albums, pick the model (Claude Opus 5 = deepest, ~$0.10–0.50/album; Claude Sonnet 5 = faster and about a third of the cost).
-3. The AI sees the row's photos, typed matrix numbers, and current data, then researches with live web search (Discogs variant first, label-dating references, real sales history — always pricing your pressing, not the master release).
+3. The AI sees the row's photos, typed matrix numbers, and current data, then researches with live web search (Discogs variant first, label-dating references, real sales history — always pricing your pressing, not the master release). Alongside the pressing fields it writes an **Album Story** — a short account of how the album came to be, its place in the artist's career, and its reception and legacy — into the Album Story column.
 4. Results appear in an approval screen with current values alongside — edit anything, then **Approve + import**, **Research further…** (with your guidance), or **Skip**.
 
 **Vinyl Values → Calculate album values with AI…** works the same way for valuations.
@@ -155,4 +157,4 @@ Row 1's column names drive the import — the script finds columns by header tex
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v1.3 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v1.4 · © 2026 pnicol66*
