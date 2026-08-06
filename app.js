@@ -707,6 +707,8 @@ $('#btnShare').onclick = async () => {
   if (navigator.canShare && navigator.canShare({ files })) {
     try {
       await navigator.share({ files });
+      toast('Shared ✓');
+      goHome();
     } catch (e) {
       if (e.name !== 'AbortError') toast('Share failed: ' + e.message);
     }
@@ -795,7 +797,8 @@ $('#btnZip').onclick = async () => {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    $('#exportStatus').textContent = 'ZIP downloaded — find it in your Downloads.';
+    toast('ZIP downloaded — find it in your Downloads.');
+    goHome();
   } catch (e) {
     $('#exportStatus').textContent = '';
     toast('ZIP failed: ' + e.message, 4000);
@@ -902,7 +905,8 @@ $('#btnDrive').onclick = async () => {
       }
     }
     st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${settings.driveFolder || 'Vinyl Curator'} / ${folderName}`;
-    toast('Uploaded to Google Drive ✓');
+    toast(`Uploaded ${exportItems.length} files to Google Drive ✓`);
+    goHome();
   } catch (e) {
     console.error(e);
     st.textContent = '';
