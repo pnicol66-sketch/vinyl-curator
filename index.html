@@ -70,6 +70,9 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 .radio-row input { display: none; }
 .radio-row input:checked + span { color: var(--text); }
 .radio-row label:has(input:checked) { border-color: var(--accent); color: var(--text); background: #2a2213; }
+#voiceHint { color: var(--dim); font-size: 12.5px; margin-top: 8px; line-height: 1.45; }
+#btnTextVoice.listening { border-color: var(--accent); color: var(--accent); animation: micpulse 1.2s ease-in-out infinite; }
+@keyframes micpulse { 50% { background: #2a2213; } }
 /* home */
 .albumcard {
   display: flex; align-items: center; background: var(--card); border: 1px solid var(--line);
@@ -260,6 +263,8 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 <section id="scr-text">
   <label class="field" for="inShotText" id="inShotTextLabel">Matrix / dead wax text — exactly as etched or stamped</label>
   <textarea id="inShotText" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. ST-A-681234-B-1"></textarea>
+  <button id="btnTextVoice" class="secondary hidden" style="margin-top:10px">🎤 Dictate it</button>
+  <div id="voiceHint" class="hidden">Read it out character by character — “S… T… dash… A… six… eight…”. Spoken numbers, “dash”, “slash” etc. are converted automatically. Tap again to stop, then fix anything by typing.</div>
   <div style="height:20px"></div>
   <div class="stack">
     <button id="btnTextSave" class="primary">Save text</button>

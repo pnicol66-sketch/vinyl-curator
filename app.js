@@ -159,6 +159,7 @@ async function openAlbum(id) {
 function backToAlbum() {
   stopCam();
   freeReview();
+  stopVoice();
   show('scr-album', { title: 'Checklist', back: goHome });
   renderShotList();
 }
@@ -644,6 +645,9 @@ async function openTextEntry(def, rec) {
   $('#inShotText').value = (rec && rec.status === 'text' && rec.text) || '';
   $('#btnTextPhoto').classList.toggle('hidden', isGrade);
   $('#btnTextDelete').classList.toggle('hidden', !(rec && rec.status === 'text'));
+  stopVoice();
+  $('#btnTextVoice').classList.toggle('hidden', isGrade || !SpeechRec);
+  $('#voiceHint').classList.toggle('hidden', isGrade || !SpeechRec);
   show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
 }
 $('#btnTypeIt').onclick = () => openTextEntry(curShot);
@@ -655,7 +659,63 @@ $('#btnTextSave').onclick = async () => {
   backToAlbum();
   toast('Saved ✓');
 };
-$('#btnTextPhoto').onclick = () => openCamera(curShot);
+$('#btnTextPhoto').onclick = () => { stopVoice(); openCamera(curShot); };
+
+/* ---------- voice dictation (matrix / dead wax) ---------- */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let speech = null;
+const VOICE_MAP = {
+  zero: '0', oh: '0', one: '1', two: '2', three: '3', four: '4',
+  five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+  dash: '-', hyphen: '-', minus: '-', slash: '/', stroke: '/',
+  dot: '.', period: '.', point: '.', hash: '#', pound: '#',
+  star: '*', asterisk: '*', plus: '+', equals: '=',
+};
+function voiceToMatrix(s) {
+  const words = s.trim().split(/\s+/).map(w => {
+    const key = w.toLowerCase().replace(/[.,]+$/, '');
+    return VOICE_MAP[key] !== undefined ? VOICE_MAP[key] : w;
+  });
+  return words.join(' ')
+    .replace(/\s*([-/.#*+=])\s*/g, '$1')   // no spaces around symbols
+    .replace(/\b(\w) (?=\w\b)/g, '$1')     // join runs of single characters: "B 1" -> "B1"
+    .toUpperCase();
+}
+function stopVoice() {
+  if (speech) { const s = speech; speech = null; try { s.stop(); } catch (e) {} }
+  const b = $('#btnTextVoice');
+  b.classList.remove('listening');
+  b.textContent = '🎤 Dictate it';
+}
+$('#btnTextVoice').onclick = () => {
+  if (speech) return stopVoice();
+  if (!SpeechRec) return;
+  speech = new SpeechRec();
+  speech.lang = navigator.language || 'en-US';
+  speech.continuous = true;
+  speech.interimResults = false;
+  speech.onresult = e => {
+    let heard = '';
+    for (let i = e.resultIndex; i < e.results.length; i++)
+      if (e.results[i].isFinal) heard += ' ' + e.results[i][0].transcript;
+    heard = voiceToMatrix(heard);
+    if (!heard) return;
+    const ta = $('#inShotText');
+    ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + heard;
+  };
+  speech.onerror = e => {
+    stopVoice();
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed')
+      toast('Microphone blocked — allow mic access for this site in your browser settings', 4200);
+    else if (e.error !== 'aborted' && e.error !== 'no-speech')
+      toast('Dictation error: ' + e.error, 3500);
+  };
+  speech.onend = () => { if (speech) stopVoice(); };  // browser ended it (silence timeout)
+  try { speech.start(); } catch (e) { return stopVoice(); }
+  const b = $('#btnTextVoice');
+  b.classList.add('listening');
+  b.textContent = '🎤 Listening… tap to stop';
+};
 $('#btnTextDelete').onclick = async () => {
   if (!confirm('Delete this text entry?')) return;
   await dbDel('shots', [curAlbum.id, curShot.id]);
