@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 1.4 · 6 August 2026**
+**Version 1.5 · 7 August 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
@@ -8,6 +8,7 @@ Contact: pnicol66@gmail.com · Personal use by permission; please don't redistri
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.5 | 2026-08-07 | Eight new **detail columns** (Format → Country Of Origin) filled by AI research, which now also writes **Label Notes** (label provenance). New **Vinyl Sales** menu — Discogs draft listings and eBay draft-file export. New **collection webpage** — a private card view of the catalogue for any device. Batch research now runs ahead in the background while you review, with a live progress line. New **Kimi K3** model option. |
 | 1.4 | 2026-08-06 | New **Album Story** sheet column (right after Side 4): the album's background and history, filled in by AI pressing research. Existing sheets add it via **Vinyl Curator → Add Album Story column**. |
 | 1.3 | 2026-08-06 | After a successful save (Share, Drive upload, or ZIP) the app returns to the home screen. |
 | 1.2 | 2026-08-06 | The Drive folder for direct uploads is now configurable in the app's Settings (default "Vinyl Curator"). |
@@ -104,7 +105,7 @@ Google OAuth Client ID (for direct upload), the **Drive folder for uploads** (de
 
 1. Open the template link you were sent and click **Make a copy** — the menus and machinery travel with it.
 2. First use of any menu item: authorize the script. The **"Google hasn't verified this app"** warning is normal — Advanced → Go to … → continue.
-3. Reload the sheet; the **Vinyl Curator**, **Vinyl Research**, and **Vinyl Values** menus are live.
+3. Reload the sheet; the **Vinyl Curator**, **Vinyl Research**, **Vinyl Values**, and **Vinyl Sales** menus are live.
 
 Access is by permission — if you see a "not licensed" message, contact pnicol66@gmail.com.
 
@@ -119,6 +120,8 @@ Access is by permission — if you see a "not licensed" message, contact pnicol6
 - **Recalculate cover + vinyl grades (all tabs)** — see aggregates below.
 - **Protect header rows (all tabs)** — see header lock below.
 - **Add Album Story column (one-time, all tabs)** — for sheets made before v1.4: inserts the **Album Story** column right after **Side 4** on every tab. Safe to run twice — it does nothing if the column already exists.
+- **Add detail columns (one-time, all tabs)** — for sheets made before v1.5: inserts eight columns right after **Album Title** on every tab — **Format, Genre, Speed, Producer, Composer, Conductor, Performer/Orchestra, Country Of Origin**. Also safe to run twice. AI research fills them (Country Of Origin = the pressing country of *your copy*, not the artist's nationality; the classical-music fields stay blank for non-classical records), or type them yourself.
+- **Open collection webpage… / Set collection webpage address…** — see the collection webpage below.
 
 ### Grade aggregates
 
@@ -136,12 +139,30 @@ Row 1's column names drive the import — the script finds columns by header tex
 
 ### AI pressing research (optional)
 
-1. Create an API key at **console.anthropic.com** (add ~$5 credits), then **Vinyl Research → Set Anthropic API key…** and paste it. The key is stored privately in your Google account, never in the sheet.
-2. **Vinyl Research → Research albums with AI…** — tick albums, pick the model (Claude Opus 5 = deepest, ~$0.10–0.50/album; Claude Sonnet 5 = faster and about a third of the cost).
-3. The AI sees the row's photos, typed matrix numbers, and current data, then researches with live web search (Discogs variant first, label-dating references, real sales history — always pricing your pressing, not the master release). Alongside the pressing fields it writes an **Album Story** — a short account of how the album came to be, its place in the artist's career, and its reception and legacy — into the Album Story column.
+1. Create an API key at **console.anthropic.com** (add ~$5 credits), then **Vinyl Research → Set Anthropic API key…** and paste it. The key is stored privately in your Google account, never in the sheet. (Alternative: a **Kimi K3** key from platform.kimi.ai via **Set Kimi API key…** — its billing is separate from Anthropic.)
+2. **Vinyl Research → Research albums with AI…** — tick albums, pick the model (Claude Opus 5 = deepest, ~$0.10–0.50/album; Claude Sonnet 5 = faster and about a third of the cost; Kimi K3 = the alternative if you set a Kimi key).
+3. The AI sees the row's photos, typed matrix numbers, and current data, then researches with live web search (Discogs variant first, label-dating references, real sales history — always pricing your pressing, not the master release). Besides the pressing fields it fills the **detail columns**, writes **Label Notes** (what your exact label variant proves about the pressing's place in the label's timeline), and an **Album Story** — how the album came to be, its place in the artist's career, its reception and legacy.
 4. Results appear in an approval screen with current values alongside — edit anything, then **Approve + import**, **Research further…** (with your guidance), or **Skip**.
 
-**Vinyl Values → Calculate album values with AI…** works the same way for valuations.
+**Batches research themselves.** While you review one album, the rest of your selection quietly researches one album at a time in the background — a blue line under the status shows which album is running, its round, and how many results are already waiting. **Approve + import** or **Skip** opens the next result instantly once it's ready. Nothing is ever written to the sheet without your Approve, and closing the dialog stops the pipeline (only the step already running finishes).
+
+**Vinyl Values → Calculate album values with AI…** works the same way for valuations, including the background batching.
+
+### The collection webpage
+
+A private, live card view of your catalogue — one card per record with the fields you choose — usable from any phone or tablet browser (no desktop needed, unlike the menus). Artist and album dropdowns, free-text search, and Collection / For Sale / Sold tabs.
+
+One-time setup on your copy: **Vinyl Curator → Open collection webpage…** walks you through deploying it (Extensions → Apps Script → Deploy → New deployment → Web app, executing as you, access "Only me"), then paste the web-app address into **Set collection webpage address…**. After that, **Open collection webpage…** shows your link any time — bookmark it on your phone. Only you can open it; it reads the sheet live, so it's always current.
+
+### The Vinyl Sales menu
+
+Puts **For Sale** rows up for sale on the two big marketplaces — always as **drafts** you review and publish there:
+
+- **List albums on Discogs…** — needs your own Discogs personal access token (discogs.com → Settings → Developers → **Set Discogs token…**) and a Discogs seller account. Per album it searches Discogs (catalogue number first), you pick the exact pressing from the candidates (or paste a release link), review the suggested condition/sleeve grades, price, and comments, and it creates the listing through the Discogs API as a **draft** — publish from Discogs after checking it.
+- **Export albums to eBay draft file…** — no eBay developer account needed. Writes a Seller Hub bulk-upload CSV to the Drive folder **"Vinyl Curator eBay exports"**; upload it at eBay → Seller Hub → Reports → Uploads and it creates listing **drafts** with title, price, description, and the item specifics (artist, label, year, gradings, matrix numbers, format/genre and more) filled in — you add photos and shipping on eBay and publish from there.
+- **Add sales columns (one-time, all tabs)** — adds **Discogs Listing** and **eBay Status** columns so both flows record what they did and when.
+
+Prices prefill from **Value Estimate** (or the first number in the Price Guide/Range) — always your call before anything is created.
 
 ## 4. Day-to-day workflow
 
@@ -152,9 +173,9 @@ Row 1's column names drive the import — the script finds columns by header tex
 
 ## 5. Good to know
 
-- **Custom menus need a desktop browser.** The Sheets app on iPad/iPhone/Android can't show script menus — on a tablet, open the sheet in the browser with "Request Desktop Website".
+- **Custom menus need a desktop browser.** The Sheets app on iPad/iPhone/Android can't show script menus — on a tablet, open the sheet in the browser with "Request Desktop Website". (The **collection webpage** works everywhere, though.)
 - **The app updates itself** (it may take one extra app-launch to pick up a new version). **Sheet script updates are pasted**: Extensions → Apps Script → select all → paste the new version → save → reload the sheet. New versions are announced by pnicol66.
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v1.4 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v1.5 · © 2026 pnicol66*
