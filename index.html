@@ -159,8 +159,33 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 .exportrow span { color: var(--dim); flex: none; }
 #exportStatus { color: var(--accent); font-size: 13.5px; min-height: 20px; margin: 10px 0; }
 /* viewer */
-#viewerImg { width: 100%; border-radius: 12px; background: #000; }
-#viewerName { color: var(--dim); font-size: 13px; word-break: break-all; margin: 10px 0 16px; }
+#viewerImg, #arcViewImg { width: 100%; border-radius: 12px; background: #000; }
+#viewerName, #arcViewName { color: var(--dim); font-size: 13px; word-break: break-all; margin: 10px 0 16px; }
+/* uploaded albums (Drive archive) */
+#arcAlbumHdr { font-size: 16px; font-weight: 700; margin: 2px 0 0; }
+#arcStatus, #arcAlbumStatus, #arcViewStatus { color: var(--dim); font-size: 13.5px; min-height: 20px; margin: 8px 0; }
+#arcFolder { margin-bottom: 6px; }
+#arcViewText {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px; font-size: 16px; white-space: pre-wrap; word-break: break-word;
+}
+/* settings folder list */
+.folderrow {
+  display: flex; align-items: center; background: var(--card); border: 1px solid var(--line);
+  border-radius: 11px; margin-bottom: 8px;
+}
+.folderrow .f-pick { flex: 1; text-align: left; background: none; border: 0; padding: 13px 12px; font-size: 15px; }
+.folderrow .f-pick:active { background: var(--card2); }
+.folderrow .f-pick em { color: var(--dim); font-style: normal; font-size: 12.5px; }
+.folderrow .f-del { border: 0; background: none; color: var(--dim); font-size: 16px; padding: 13px; }
+.addrow { display: flex; gap: 8px; }
+.addrow input { flex: 1; }
+.addrow button {
+  border: 1px solid var(--line); border-radius: 11px; background: var(--card);
+  color: var(--text); font-weight: 600; padding: 0 18px;
+}
+.addrow button:active { background: var(--card2); }
+p.hint { color: var(--dim); font-size: 12.5px; line-height: 1.45; margin: 8px 0 0; }
 /* settings */
 details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 details summary { font-weight: 600; font-size: 14.5px; }
@@ -188,6 +213,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   <div id="albumList"></div>
   <div class="stack">
     <button id="btnNew" class="primary">＋ New Album</button>
+    <button id="btnArchive" class="secondary hidden">📁 Uploaded albums</button>
     <button id="btnInstall" class="secondary hidden">Install app on this phone</button>
   </div>
 </section>
@@ -251,6 +277,9 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 <section id="scr-export">
   <div id="exportList"></div>
   <div id="exportStatus"></div>
+  <label class="field hidden" id="expFolderLabel" for="expFolder">Drive folder to upload into</label>
+  <select id="expFolder" class="hidden"></select>
+  <div style="height:12px"></div>
   <div class="stack">
     <button id="btnDrive" class="primary">Upload to Google Drive</button>
     <button id="btnShare" class="secondary">Share… (send to Drive app, no setup)</button>
@@ -279,6 +308,27 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   </div>
 </section>
 
+<section id="scr-archive">
+  <select id="arcFolder" class="hidden"></select>
+  <div id="arcStatus"></div>
+  <div id="arcList"></div>
+</section>
+
+<section id="scr-arcalbum">
+  <div id="arcAlbumHdr"></div>
+  <div id="arcAlbumStatus"></div>
+  <div id="arcShots"></div>
+  <div style="height:10px"></div>
+  <button id="btnUnhide" class="secondary hidden">↩ Move back to home screen (edit / re-upload)</button>
+</section>
+
+<section id="scr-arcview">
+  <img id="arcViewImg" class="hidden" alt="Uploaded photo">
+  <div id="arcViewText" class="hidden"></div>
+  <div id="arcViewStatus"></div>
+  <div id="arcViewName"></div>
+</section>
+
 <section id="scr-settings">
   <h2 class="sect" style="margin-top:4px">Google Drive direct upload (optional)</h2>
   <details>
@@ -295,8 +345,13 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   </details>
   <label class="field" for="inClientId">OAuth Client ID</label>
   <input type="text" id="inClientId" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com">
-  <label class="field" for="inDriveFolder">Drive folder for uploads (default: Vinyl Curator)</label>
-  <input type="text" id="inDriveFolder" autocomplete="off" placeholder="Vinyl Curator">
+  <label class="field">Drive folders for uploads — tap one to make it the default</label>
+  <div id="folderList"></div>
+  <div class="addrow">
+    <input type="text" id="inNewFolder" autocomplete="off" placeholder="Add another folder…">
+    <button id="btnAddFolder">Add</button>
+  </div>
+  <p class="hint">Each upload goes to the default folder unless you pick another on the save screen. New folders are created in Drive on first upload; removing one here doesn’t touch Drive.</p>
 
   <h2 class="sect">Photo output</h2>
   <label class="field" for="inMaxOut">Max size (long edge)</label>
