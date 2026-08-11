@@ -192,7 +192,7 @@ async function renderShotList() {
     if (status === 'done' || status === 'text') done++;
     const item = document.createElement('button');
     item.className = 'shotitem';
-    const thumbChar = status === 'done' ? '' : status === 'text' ? '⌨' : status === 'skipped' ? '—' : (def.type === 'grade' || def.type === 'matrix') ? '⌨' : '📷';
+    const thumbChar = status === 'done' ? '' : status === 'text' ? '⌨' : status === 'skipped' ? '—' : def.type === 'grade' ? '⌨' : '📷';
     const nameExtra = status === 'text'
       ? ` <em>· ${esc(rec.text.length > 22 ? rec.text.slice(0, 22) + '…' : rec.text)}</em>`
       : def.opt ? ' <em>· optional</em>' : '';
@@ -209,7 +209,7 @@ async function renderShotList() {
     }
     item.onclick = () => {
       if (status === 'done') openViewer(def, rec);
-      else if (status === 'text' || def.type === 'grade' || def.type === 'matrix') openTextEntry(def, rec);
+      else if (status === 'text' || def.type === 'grade') openTextEntry(def, rec);
       else openCamera(def);
     };
     list.appendChild(item);
@@ -233,6 +233,8 @@ async function openCamera(def) {
   $('#camLabel').textContent = `${pad2(def.n)} · ${def.name}`;
   $('#camTip').textContent = TIPS[def.type] || '';
   $('#btnSkip').classList.toggle('hidden', !def.opt);
+  $('#btnTypeIt').classList.toggle('hidden', def.type !== 'matrix');
+  $('#btnType2').classList.toggle('hidden', def.type !== 'matrix');
   $('#camFallback').classList.add('hidden');
   await startCam();
 }
@@ -698,12 +700,16 @@ async function openTextEntry(def, rec) {
     : 'Matrix / dead wax text — exactly as etched or stamped';
   $('#inShotText').placeholder = isGrade ? 'e.g. VG+' : 'e.g. ST-A-681234-B-1';
   $('#inShotText').value = (rec && rec.status === 'text' && rec.text) || '';
+  $('#btnTextPhoto').classList.toggle('hidden', isGrade);
   $('#btnTextDelete').classList.toggle('hidden', !(rec && rec.status === 'text'));
   stopVoice();
   $('#btnTextVoice').classList.toggle('hidden', isGrade || !SpeechRec);
   $('#voiceHint').classList.toggle('hidden', isGrade || !SpeechRec);
   show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
 }
+$('#btnTypeIt').onclick = () => openTextEntry(curShot);
+$('#btnType2').onclick = () => openTextEntry(curShot);
+$('#btnTextPhoto').onclick = () => { stopVoice(); openCamera(curShot); };
 $('#btnTextSave').onclick = async () => {
   const t = $('#inShotText').value.trim();
   if (!t) return toast(curShot.type === 'grade' ? 'Type the grade first, or go back' : 'Type the matrix text first, or go back');
@@ -780,10 +786,9 @@ function openViewer(def, rec) {
   viewerUrl = URL.createObjectURL(rec.blob);
   $('#viewerImg').src = viewerUrl;
   $('#viewerName').textContent = filenameFor(def);
-  $('#btnVRetake').textContent = def.type === 'matrix' ? '⌨ Type it in instead' : 'Retake this photo';
   show('scr-viewer', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
 }
-$('#btnVRetake').onclick = () => viewShot.type === 'matrix' ? openTextEntry(viewShot) : openCamera(viewShot);
+$('#btnVRetake').onclick = () => openCamera(viewShot);
 $('#btnVDelete').onclick = async () => {
   if (!confirm('Delete this photo?')) return;
   await dbDel('shots', [curAlbum.id, viewShot.id]);

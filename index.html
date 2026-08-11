@@ -270,12 +270,14 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
         <button id="btnTorch" class="iconbtn2 hidden" aria-label="Torch">🔦</button>
         <button id="btnSnap" aria-label="Take photo"></button>
         <button id="btnImport" class="iconbtn2" aria-label="Import from gallery">🖼</button>
+        <button id="btnTypeIt" class="iconbtn2 hidden" aria-label="Type it instead">⌨</button>
       </div>
     </div>
     <div id="camFallback" class="hidden">
       <div style="font-size:40px">📷</div>
       <div id="camFallbackMsg"></div>
       <button id="btnImport2" class="secondary" style="max-width:320px">Take / choose photo with camera app</button>
+      <button id="btnType2" class="secondary hidden" style="max-width:320px">⌨ Type it in instead</button>
     </div>
     <input type="file" id="fileInput" accept="image/*" class="hidden">
   </div>
@@ -313,6 +315,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   <div style="height:20px"></div>
   <div class="stack">
     <button id="btnTextSave" class="primary">Save text</button>
+    <button id="btnTextPhoto" class="secondary">📷 Take a photo instead</button>
     <button id="btnTextDelete" class="secondary danger hidden">Delete this entry</button>
   </div>
 </section>
