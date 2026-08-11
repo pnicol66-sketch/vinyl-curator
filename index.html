@@ -110,7 +110,7 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
   padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
 }
 #camTip {
-  position: absolute; left: 12px; right: 12px; bottom: 148px; text-align: center;
+  position: absolute; left: 12px; right: 12px; bottom: 196px; text-align: center;
   color: #ddd; font-size: 12.5px; text-shadow: 0 1px 3px #000;
 }
 #camControls {
@@ -118,7 +118,17 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
   align-items: center; gap: 10px; padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
   background: linear-gradient(transparent, rgba(0,0,0,.6));
 }
-#zoom { width: 70%; accent-color: var(--accent); }
+.camslider { display: flex; align-items: center; gap: 10px; width: 88%; }
+.camslider input { flex: 1; accent-color: var(--accent); }
+.camslabel {
+  font-size: 11px; color: #ddd; min-width: 36px; text-align: right;
+  text-shadow: 0 1px 3px #000;
+}
+#btnAF {
+  border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.4); color: #fff;
+  border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 600;
+}
+#btnAF.on { background: var(--accent); border-color: var(--accent); }
 .camrow { display: flex; align-items: center; gap: 20px; }
 #btnSnap {
   width: 72px; height: 72px; border-radius: 50%; border: 4px solid #fff;
@@ -247,7 +257,15 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <button id="btnSkip" class="hidden">Skip</button>
     <div id="camTip"></div>
     <div id="camControls">
-      <input type="range" id="zoom" class="hidden">
+      <div id="focusRow" class="camslider hidden">
+        <span class="camslabel">Focus</span>
+        <input type="range" id="focus">
+        <button id="btnAF" class="on" aria-label="Autofocus">AF</button>
+      </div>
+      <div id="zoomRow" class="camslider hidden">
+        <span class="camslabel">Zoom</span>
+        <input type="range" id="zoom">
+      </div>
       <div class="camrow">
         <button id="btnTorch" class="iconbtn2 hidden" aria-label="Torch">🔦</button>
         <button id="btnSnap" aria-label="Take photo"></button>

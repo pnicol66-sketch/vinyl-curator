@@ -111,7 +111,9 @@ improvements.
 - Lay covers and discs on a plain background that contrasts with them (light for dark
   covers, dark for light ones) — that's what the outline detection keys on.
 - For matrix / dead-wax shots use the 🔦 torch button and tilt the disc slightly so the
-  etched characters catch shadows; use the zoom slider to get close.
+  etched characters catch shadows; use the zoom slider to get close. If the image goes
+  blurry up close, drag the **Focus** slider (left = nearest) or tap **AF** to re-run
+  autofocus (both appear only on cameras that support focus control).
 - If auto-detect misses, drag the four amber corners, or tap **Auto** to retry / **Full**
   to keep the whole frame. **⟳** rotates the saved photo in 90° steps.
 - Label shots crop as a **circle** (saved on a white square): drag inside the circle to

@@ -225,7 +225,7 @@ function filenameFor(def) {
 }
 
 /* ---------- camera ---------- */
-let stream = null, track = null, imageCapture = null, curShot = null, torchOn = false;
+let stream = null, track = null, imageCapture = null, curShot = null, torchOn = false, manualFocus = false;
 async function openCamera(def) {
   curShot = def;
   freeReview();
@@ -264,9 +264,38 @@ async function startCam() {
     zoomEl.max = caps.zoom.max;
     zoomEl.step = caps.zoom.step || 0.1;
     zoomEl.value = (track.getSettings && track.getSettings().zoom) || caps.zoom.min;
-    zoomEl.classList.remove('hidden');
+    $('#zoomRow').classList.remove('hidden');
   } else {
-    zoomEl.classList.add('hidden');
+    $('#zoomRow').classList.add('hidden');
+  }
+  manualFocus = false;
+  $('#btnAF').classList.add('on');
+  const modes = caps.focusMode || [];
+  const focusEl = $('#focus');
+  if (modes.includes('manual') && caps.focusDistance && caps.focusDistance.max > caps.focusDistance.min) {
+    focusEl.min = caps.focusDistance.min;
+    focusEl.max = caps.focusDistance.max;
+    focusEl.step = caps.focusDistance.step || 0.01;
+    focusEl.value = (track.getSettings && track.getSettings().focusDistance) || caps.focusDistance.min;
+    $('#focusRow').classList.remove('hidden');
+  } else {
+    $('#focusRow').classList.add('hidden');
+  }
+  if (curShot && curShot.type === 'matrix' && !$('#focusRow').classList.contains('hidden')) {
+    $('#camTip').textContent = TIPS.matrix + ' Blurry? Drag Focus or tap AF.';
+  }
+  // Some phones open the getUserMedia stream with focus locked; ask for continuous AF explicitly.
+  if (modes.includes('continuous')) {
+    track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+  }
+}
+function refocus() {
+  if (!track) return;
+  const modes = (track.getCapabilities && track.getCapabilities().focusMode) || [];
+  if (modes.includes('single-shot')) {
+    track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).catch(() => {});
+  } else if (modes.includes('continuous')) {
+    track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
   }
 }
 function stopCam() {
@@ -281,6 +310,20 @@ function camFail(msg) {
 }
 $('#zoom').oninput = e => {
   if (track) track.applyConstraints({ advanced: [{ zoom: Number(e.target.value) }] }).catch(() => {});
+};
+$('#zoom').onchange = () => {
+  if (!manualFocus) refocus();
+};
+$('#focus').oninput = e => {
+  if (!track) return;
+  manualFocus = true;
+  $('#btnAF').classList.remove('on');
+  track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: Number(e.target.value) }] }).catch(() => {});
+};
+$('#btnAF').onclick = () => {
+  manualFocus = false;
+  $('#btnAF').classList.add('on');
+  refocus();
 };
 $('#btnTorch').onclick = () => {
   torchOn = !torchOn;
@@ -307,7 +350,8 @@ $('#btnSkip').onclick = async () => {
 };
 async function snap() {
   let bmp = null;
-  if (imageCapture && imageCapture.takePhoto) {
+  // takePhoto() can run its own autofocus pass, which would undo a manually set focus.
+  if (imageCapture && imageCapture.takePhoto && !manualFocus) {
     try {
       const blob = await Promise.race([
         imageCapture.takePhoto(),
