@@ -77,8 +77,16 @@ async function shotsFor(albumId) {
 }
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator' };
-async function loadSettings() { const s = await dbGet('kv', 'settings'); if (s) Object.assign(settings, s); }
+const settings = { clientId: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null };
+async function loadSettings() {
+  const s = await dbGet('kv', 'settings');
+  if (s) Object.assign(settings, s);
+  // migrate pre-v1.4 single-folder settings to the folder list
+  if (!Array.isArray(settings.driveFolders) || !settings.driveFolders.length)
+    settings.driveFolders = [settings.driveFolder || 'Vinyl Curator'];
+  if (!settings.driveFolders.includes(settings.driveFolder))
+    settings.driveFolder = settings.driveFolders[0];
+}
 async function saveSettings() { await dbPut('kv', { ...settings }, 'settings'); }
 
 /* ---------- navigation ---------- */
@@ -98,11 +106,16 @@ $('#btnSettings').onclick = () => openSettings();
 async function goHome() {
   stopCam();
   show('scr-home', { title: 'Vinyl Curator', gear: true });
-  const albums = (await dbAll('albums')).sort((a, b) => b.created - a.created);
+  const all = (await dbAll('albums')).sort((a, b) => b.created - a.created);
+  const albums = all.filter(a => !a.uploaded);
+  const hiddenCount = all.length - albums.length;
+  $('#btnArchive').classList.toggle('hidden', !hiddenCount && !settings.clientId);
   const list = $('#albumList');
   list.innerHTML = '';
   if (!albums.length) {
-    list.innerHTML = '<p class="empty">No albums yet.<br>Tap “New Album” to start shooting.</p>';
+    list.innerHTML = hiddenCount
+      ? '<p class="empty">All albums uploaded ✓<br>Find them under “Uploaded albums” below.</p>'
+      : '<p class="empty">No albums yet.<br>Tap “New Album” to start shooting.</p>';
   }
   for (const al of albums) {
     const shots = await shotsFor(al.id);
@@ -754,6 +767,14 @@ async function openExport() {
   $('#btnDrive').textContent = settings.clientId
     ? 'Upload to Google Drive'
     : 'Upload to Google Drive (needs setup — see Settings)';
+  const sel = $('#expFolder');
+  const pre = curAlbum.driveFolderName && settings.driveFolders.includes(curAlbum.driveFolderName)
+    ? curAlbum.driveFolderName : settings.driveFolder;
+  sel.innerHTML = settings.driveFolders
+    .map(f => `<option${f === pre ? ' selected' : ''}>${esc(f)}</option>`).join('');
+  const single = settings.driveFolders.length < 2 || !settings.clientId;
+  $('#expFolderLabel').classList.toggle('hidden', single);
+  sel.classList.toggle('hidden', single);
   show('scr-export', { title: 'Save photos', back: backToAlbum });
 }
 $('#btnShare').onclick = async () => {
@@ -761,7 +782,13 @@ $('#btnShare').onclick = async () => {
   if (navigator.canShare && navigator.canShare({ files })) {
     try {
       await navigator.share({ files });
-      toast('Shared ✓');
+      if (confirm('Mark this album as uploaded?\n\nIt moves off the home screen into “Uploaded albums”. (You can bring it back from there.)')) {
+        curAlbum.uploaded = Date.now();
+        await dbPut('albums', curAlbum);
+        toast('Shared ✓ — moved to “Uploaded albums”');
+      } else {
+        toast('Shared ✓');
+      }
       goHome();
     } catch (e) {
       if (e.name !== 'AbortError') toast('Share failed: ' + e.message);
@@ -902,16 +929,28 @@ async function drive(url, opts = {}) {
   return res.json();
 }
 function qEsc(s) { return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
-async function findOrCreateFolder(name, parent) {
+async function findFolder(name, parent) {
   const q = `name='${qEsc(name)}' and mimeType='application/vnd.google-apps.folder' and '${parent}' in parents and trashed=false`;
   const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id)');
-  if (r.files && r.files.length) return r.files[0].id;
+  return (r.files && r.files.length) ? r.files[0].id : null;
+}
+async function findOrCreateFolder(name, parent) {
+  const found = await findFolder(name, parent);
+  if (found) return found;
   const made = await drive('https://www.googleapis.com/drive/v3/files?fields=id', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] }),
   });
   return made.id;
+}
+async function driveBlob(fileId) {
+  const token = await getToken();
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error('Drive error ' + res.status + ': ' + (await res.text()).slice(0, 200));
+  return res.blob();
 }
 $('#btnDrive').onclick = async () => {
   const st = $('#exportStatus');
@@ -927,7 +966,8 @@ $('#btnDrive').onclick = async () => {
     st.textContent = 'Signing in to Google…';
     await getToken();
     st.textContent = 'Finding Drive folder…';
-    const root = await findOrCreateFolder(settings.driveFolder || 'Vinyl Curator', 'root');
+    const importFolder = $('#expFolder').value || settings.driveFolder || 'Vinyl Curator';
+    const root = await findOrCreateFolder(importFolder, 'root');
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
     const folder = await findOrCreateFolder(folderName, root);
     let n = 0;
@@ -958,8 +998,12 @@ $('#btnDrive').onclick = async () => {
         });
       }
     }
-    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${settings.driveFolder || 'Vinyl Curator'} / ${folderName}`;
-    toast(`Uploaded ${exportItems.length} files to Google Drive ✓`);
+    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${importFolder} / ${folderName}`;
+    curAlbum.uploaded = Date.now();
+    curAlbum.driveFolderName = importFolder;
+    curAlbum.driveFolderId = folder;
+    await dbPut('albums', curAlbum);
+    toast(`Uploaded ${exportItems.length} files ✓ — album moved to “Uploaded albums”`, 3600);
     goHome();
   } catch (e) {
     console.error(e);
@@ -970,17 +1014,209 @@ $('#btnDrive').onclick = async () => {
   }
 };
 
+/* ---------- uploaded albums (Drive archive) ---------- */
+let arcUrls = [];
+let arcAlbumFolder = null;
+function arcFree() { arcUrls.forEach(u => URL.revokeObjectURL(u)); arcUrls = []; }
+$('#btnArchive').onclick = () => openArchive();
+
+async function openArchive() {
+  arcFree();
+  show('scr-archive', { title: 'Uploaded albums', back: goHome });
+  const sel = $('#arcFolder');
+  const last = (await dbGet('kv', 'arcFolder')) || settings.driveFolder;
+  sel.innerHTML = settings.driveFolders
+    .map(f => `<option${f === last ? ' selected' : ''}>${esc(f)}</option>`).join('');
+  sel.classList.toggle('hidden', settings.driveFolders.length < 2 || !settings.clientId);
+  await loadArchive();
+}
+$('#arcFolder').onchange = () => loadArchive();
+
+async function loadArchive() {
+  const st = $('#arcStatus'), list = $('#arcList');
+  list.innerHTML = '';
+  // albums hidden after a Share-sheet upload — Drive can't show these to the app, but they're still on the phone
+  const local = (await dbAll('albums'))
+    .filter(a => a.uploaded && !a.driveFolderId)
+    .sort((a, b) => b.uploaded - a.uploaded);
+  for (const al of local) {
+    const row = document.createElement('div');
+    row.className = 'albumcard';
+    row.innerHTML =
+      `<button class="al-open"><div class="al-art">${esc(al.artist)}</div>` +
+      `<div class="al-title">${esc(al.title)}</div>` +
+      `<div class="al-meta">📱 uploaded via Share · photos still on this phone</div></button>` +
+      `<button class="al-del" aria-label="Move back to home screen">↩</button>`;
+    row.querySelector('.al-open').onclick = () => openAlbum(al.id);
+    row.querySelector('.al-del').onclick = async () => {
+      delete al.uploaded;
+      await dbPut('albums', al);
+      toast('Album is back on the home screen');
+      goHome();
+    };
+    list.appendChild(row);
+  }
+  if (!settings.clientId) {
+    st.textContent = 'Browsing your Drive folders here needs the one-time Google setup — see ⚙ Settings → “Google Drive direct upload”.';
+    return;
+  }
+  const name = $('#arcFolder').value || settings.driveFolder;
+  await dbPut('kv', name, 'arcFolder');
+  try {
+    st.textContent = 'Loading from Google Drive…';
+    const root = await findFolder(name, 'root');
+    if (!root) {
+      st.textContent = `No “${name}” folder in Drive yet — it’s created the first time you upload an album to it.`;
+      return;
+    }
+    const q = `mimeType='application/vnd.google-apps.folder' and '${root}' in parents and trashed=false`;
+    const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
+      '&fields=files(id,name)&orderBy=name&pageSize=1000');
+    const folders = r.files || [];
+    st.textContent = folders.length
+      ? (local.length ? 'In Drive:' : '')
+      : `No albums in “${name}” yet.` + (local.length ? '' : ' Upload one with “Upload to Google Drive” and it will appear here.');
+    for (const f of folders) {
+      const row = document.createElement('div');
+      row.className = 'albumcard';
+      row.innerHTML =
+        `<button class="al-open"><div class="al-art">${esc(f.name.replace('_', ' — '))}</div>` +
+        `<div class="al-meta">📁 in Drive · ${esc(name)}</div></button>`;
+      row.querySelector('.al-open').onclick = () => openArcAlbum(f);
+      list.appendChild(row);
+    }
+  } catch (e) {
+    console.error(e);
+    st.textContent = 'Couldn’t load from Drive.';
+    toast(e.message, 4500);
+  }
+}
+
+async function openArcAlbum(f) {
+  arcFree();
+  arcAlbumFolder = f;
+  show('scr-arcalbum', { title: f.name.replace('_', ' — '), back: openArchive });
+  $('#arcAlbumHdr').textContent = f.name.replace('_', ' — ');
+  const list = $('#arcShots');
+  list.innerHTML = '';
+  $('#arcAlbumStatus').textContent = 'Loading…';
+  const localAl = (await dbAll('albums')).find(a => a.driveFolderId === f.id);
+  const unhide = $('#btnUnhide');
+  unhide.classList.toggle('hidden', !localAl);
+  unhide.onclick = localAl ? async () => {
+    delete localAl.uploaded;
+    await dbPut('albums', localAl);
+    toast('Album is back on the home screen');
+    openAlbum(localAl.id);
+  } : null;
+  try {
+    const q = `'${f.id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+    const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
+      '&fields=files(id,name,mimeType,thumbnailLink)&orderBy=name&pageSize=1000');
+    const files = r.files || [];
+    $('#arcAlbumStatus').textContent = files.length ? '' : 'This folder is empty.';
+    for (const file of files) {
+      const isImg = (file.mimeType || '').startsWith('image/');
+      const item = document.createElement('button');
+      item.className = 'shotitem';
+      item.innerHTML =
+        `<span class="thumb">${isImg ? '📷' : '⌨'}</span>` +
+        `<span class="shotname">${esc(file.name)}</span>`;
+      if (isImg) arcThumb(file, item.querySelector('.thumb'));
+      item.onclick = () => openArcView(file);
+      list.appendChild(item);
+    }
+  } catch (e) {
+    console.error(e);
+    $('#arcAlbumStatus').textContent = '';
+    toast(e.message, 4500);
+  }
+}
+function arcThumb(file, holder) {
+  const img = document.createElement('img');
+  img.alt = '';
+  img.onload = () => { holder.textContent = ''; holder.appendChild(img); };
+  img.onerror = async () => {
+    img.onerror = null;
+    try {
+      const u = URL.createObjectURL(await driveBlob(file.id));
+      arcUrls.push(u);
+      img.src = u;
+    } catch {}
+  };
+  if (file.thumbnailLink) img.src = file.thumbnailLink;
+  else img.onerror();
+}
+
+async function openArcView(file) {
+  show('scr-arcview', { title: 'Uploaded file', back: () => openArcAlbum(arcAlbumFolder) });
+  $('#arcViewName').textContent = file.name;
+  $('#arcViewImg').classList.add('hidden');
+  $('#arcViewText').classList.add('hidden');
+  $('#arcViewStatus').textContent = 'Loading…';
+  try {
+    const blob = await driveBlob(file.id);
+    if ((file.mimeType || '').startsWith('image/')) {
+      const u = URL.createObjectURL(blob);
+      arcUrls.push(u);
+      $('#arcViewImg').src = u;
+      $('#arcViewImg').classList.remove('hidden');
+    } else {
+      $('#arcViewText').textContent = await blob.text();
+      $('#arcViewText').classList.remove('hidden');
+    }
+    $('#arcViewStatus').textContent = '';
+  } catch (e) {
+    console.error(e);
+    $('#arcViewStatus').textContent = 'Couldn’t load this file.';
+    toast(e.message, 4500);
+  }
+}
+
 /* ---------- settings ---------- */
+let editFolders = [], editDefault = '';
+function renderFolderList() {
+  const list = $('#folderList');
+  list.innerHTML = '';
+  for (const f of editFolders) {
+    const isDef = f === editDefault;
+    const row = document.createElement('div');
+    row.className = 'folderrow';
+    row.innerHTML =
+      `<button class="f-pick">${isDef ? '●' : '○'} ${esc(f)}${isDef ? ' <em>· default</em>' : ''}</button>` +
+      (editFolders.length > 1 ? '<button class="f-del" aria-label="Remove folder">✕</button>' : '');
+    row.querySelector('.f-pick').onclick = () => { editDefault = f; renderFolderList(); };
+    const del = row.querySelector('.f-del');
+    if (del) del.onclick = () => {
+      editFolders = editFolders.filter(x => x !== f);
+      if (editDefault === f) editDefault = editFolders[0];
+      renderFolderList();
+    };
+    list.appendChild(row);
+  }
+}
+$('#btnAddFolder').onclick = () => {
+  const name = sanitize($('#inNewFolder').value);
+  if (!name) return toast('Type a folder name first');
+  if (editFolders.some(f => f.toLowerCase() === name.toLowerCase())) return toast('That folder is already in the list');
+  editFolders.push(name);
+  $('#inNewFolder').value = '';
+  renderFolderList();
+};
 function openSettings() {
   $('#inClientId').value = settings.clientId;
-  $('#inDriveFolder').value = settings.driveFolder || 'Vinyl Curator';
+  editFolders = [...settings.driveFolders];
+  editDefault = settings.driveFolder;
+  $('#inNewFolder').value = '';
+  renderFolderList();
   $('#inMaxOut').value = String(settings.maxOut);
   $('#inQuality').value = String(settings.quality);
   show('scr-settings', { title: 'Settings', back: goHome });
 }
 $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
-  settings.driveFolder = $('#inDriveFolder').value.trim() || 'Vinyl Curator';
+  settings.driveFolders = editFolders.length ? [...editFolders] : ['Vinyl Curator'];
+  settings.driveFolder = settings.driveFolders.includes(editDefault) ? editDefault : settings.driveFolders[0];
   settings.maxOut = Number($('#inMaxOut').value) || 2400;
   settings.quality = Number($('#inQuality').value) || 0.92;
   await saveSettings();
