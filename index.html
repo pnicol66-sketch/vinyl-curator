@@ -71,6 +71,18 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 .radio-row input:checked + span { color: var(--text); }
 .radio-row label:has(input:checked) { border-color: var(--accent); color: var(--text); background: #2a2213; }
 #voiceHint { color: var(--dim); font-size: 12.5px; margin-top: 8px; line-height: 1.45; }
+.slotrow { display: flex; gap: 10px; align-items: stretch; }
+.slotrow select { flex: 1; }
+.slotrow button { flex: 1.4; margin: 0; }
+#slotThumbs { display: flex; gap: 8px; margin-top: 10px; }
+.slotthumb {
+  flex: 1; aspect-ratio: 1; border-radius: 10px; border: 1px dashed var(--line);
+  background: var(--card); color: var(--dim); font-size: 12px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.slotthumb img { width: 100%; height: 100%; object-fit: cover; }
+.slotthumb.filled { border-style: solid; }
+.slotthumb.sel { border-color: var(--accent); color: var(--accent); }
 #btnTextVoice.listening { border-color: var(--accent); color: var(--accent); animation: micpulse 1.2s ease-in-out infinite; }
 @keyframes micpulse { 50% { background: #2a2213; } }
 /* home */
@@ -270,14 +282,12 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
         <button id="btnTorch" class="iconbtn2 hidden" aria-label="Torch">🔦</button>
         <button id="btnSnap" aria-label="Take photo"></button>
         <button id="btnImport" class="iconbtn2" aria-label="Import from gallery">🖼</button>
-        <button id="btnTypeIt" class="iconbtn2 hidden" aria-label="Type it instead">⌨</button>
       </div>
     </div>
     <div id="camFallback" class="hidden">
       <div style="font-size:40px">📷</div>
       <div id="camFallbackMsg"></div>
       <button id="btnImport2" class="secondary" style="max-width:320px">Take / choose photo with camera app</button>
-      <button id="btnType2" class="secondary hidden" style="max-width:320px">⌨ Type it in instead</button>
     </div>
     <input type="file" id="fileInput" accept="image/*" class="hidden">
   </div>
@@ -308,14 +318,26 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 </section>
 
 <section id="scr-text">
-  <label class="field" for="inShotText" id="inShotTextLabel">Matrix / dead wax text — exactly as etched or stamped</label>
+  <label class="field" for="inShotText" id="inShotTextLabel">Matrix/Runout text — exactly as etched or stamped</label>
   <textarea id="inShotText" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. ST-A-681234-B-1"></textarea>
   <button id="btnTextVoice" class="secondary hidden" style="margin-top:10px">🎤 Dictate it</button>
   <div id="voiceHint" class="hidden">Read it out character by character — “S… T… dash… A… six… eight…”. Spoken numbers, “dash”, “slash” etc. are converted automatically. Tap again to stop, then fix anything by typing.</div>
+  <div id="photoSection" class="hidden">
+    <h2 class="sect" style="margin-top:22px">Matrix/Runout photos (optional)</h2>
+    <div class="slotrow">
+      <select id="slotSel">
+        <option value="1">Photo 1</option>
+        <option value="2">Photo 2</option>
+        <option value="3">Photo 3</option>
+        <option value="4">Photo 4</option>
+      </select>
+      <button id="btnSlotShoot" class="secondary">📷 Take photo</button>
+    </div>
+    <div id="slotThumbs"></div>
+  </div>
   <div style="height:20px"></div>
   <div class="stack">
     <button id="btnTextSave" class="primary">Save text</button>
-    <button id="btnTextPhoto" class="secondary">📷 Take a photo instead</button>
     <button id="btnTextDelete" class="secondary danger hidden">Delete this entry</button>
   </div>
 </section>

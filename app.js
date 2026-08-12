@@ -29,15 +29,15 @@ const SHOTS = [
   { id: 's3grade',    n: 11, name: 'Vinyl Grade Side 3',    type: 'grade',  disc: 2 },
   { id: 's4label',    n: 12, name: 'Side 4 Label',          type: 'label',  disc: 2 },
   { id: 's4grade',    n: 13, name: 'Vinyl Grade Side 4',    type: 'grade',  disc: 2 },
-  { id: 's1matrix',   n: 14, name: 'Side 1 Matrix',         type: 'matrix', disc: 1 },
-  { id: 's1dwo',      n: 15, name: 'Side 1 Dead Wax Other', type: 'matrix', disc: 1, opt: true },
-  { id: 's2matrix',   n: 16, name: 'Side 2 Matrix',         type: 'matrix', disc: 1 },
-  { id: 's2dwo',      n: 17, name: 'Side 2 Dead Wax Other', type: 'matrix', disc: 1, opt: true },
-  { id: 's3matrix',   n: 18, name: 'Side 3 Matrix',         type: 'matrix', disc: 2 },
-  { id: 's3dwo',      n: 19, name: 'Side 3 Dead Wax Other', type: 'matrix', disc: 2, opt: true },
-  { id: 's4matrix',   n: 20, name: 'Side 4 Matrix',         type: 'matrix', disc: 2 },
-  { id: 's4dwo',      n: 21, name: 'Side 4 Dead Wax Other', type: 'matrix', disc: 2, opt: true },
+  // Numbers 15/17/19/21 belonged to the removed "Dead Wax Other" entries; gaps kept so
+  // existing Drive files never need renaming. fname = filename form ("/" is illegal in filenames).
+  { id: 's1matrix',   n: 14, name: 'Side 1 Matrix/Runout', fname: 'Side 1 Matrix Runout', letter: 'A', type: 'matrix', disc: 1 },
+  { id: 's2matrix',   n: 16, name: 'Side 2 Matrix/Runout', fname: 'Side 2 Matrix Runout', letter: 'B', type: 'matrix', disc: 1 },
+  { id: 's3matrix',   n: 18, name: 'Side 3 Matrix/Runout', fname: 'Side 3 Matrix Runout', letter: 'C', type: 'matrix', disc: 2 },
+  { id: 's4matrix',   n: 20, name: 'Side 4 Matrix/Runout', fname: 'Side 4 Matrix Runout', letter: 'D', type: 'matrix', disc: 2 },
 ];
+const SLOTS = [1, 2, 3, 4];
+function slotId(def, n) { return `${def.id}_p${n}`; }
 const TIPS = {
   cover: 'Lay flat on a plain, contrasting background and fill the frame — the outline is detected automatically.',
   label: 'Center the label and fill the frame — the round outline is detected and cropped as a circle.',
@@ -173,6 +173,8 @@ function backToAlbum() {
   stopCam();
   freeReview();
   stopVoice();
+  freeSlotUrls();
+  textDraft = null;
   show('scr-album', { title: 'Checklist', back: goHome });
   renderShotList();
 }
@@ -190,25 +192,30 @@ async function renderShotList() {
     const rec = byId[def.id];
     const status = rec?.status || '';
     if (status === 'done' || status === 'text') done++;
+    const isMatrix = def.type === 'matrix';
+    const slotRecs = isMatrix ? SLOTS.map(n => byId[slotId(def, n)]).filter(Boolean) : [];
     const item = document.createElement('button');
     item.className = 'shotitem';
-    const thumbChar = status === 'done' ? '' : status === 'text' ? '⌨' : status === 'skipped' ? '—' : def.type === 'grade' ? '⌨' : '📷';
-    const nameExtra = status === 'text'
+    const thumbChar = status === 'done' ? '' : status === 'text' ? (slotRecs.length ? '' : '⌨') : status === 'skipped' ? '—' : (def.type === 'grade' || isMatrix) ? '⌨' : '📷';
+    let nameExtra = status === 'text'
       ? ` <em>· ${esc(rec.text.length > 22 ? rec.text.slice(0, 22) + '…' : rec.text)}</em>`
       : def.opt ? ' <em>· optional</em>' : '';
+    if (slotRecs.length) nameExtra += ` <em>· 📷×${slotRecs.length}</em>`;
     item.innerHTML =
       `<span class="thumb">${thumbChar}</span>` +
       `<span class="shotname">${pad2(def.n)} ${esc(def.name)}${nameExtra}</span>` +
       `<span class="shotstate ${status === 'text' ? 'done' : status}">${status === 'done' || status === 'text' ? '✓' : status === 'skipped' ? 'skipped' : ''}</span>`;
-    if (status === 'done') {
-      const url = URL.createObjectURL(rec.blob);
+    const thumbBlob = status === 'done' ? rec.blob : slotRecs.length ? slotRecs[0].blob : null;
+    if (thumbBlob) {
+      const url = URL.createObjectURL(thumbBlob);
       thumbUrls.push(url);
       const img = document.createElement('img');
       img.src = url;
       item.querySelector('.thumb').appendChild(img);
     }
     item.onclick = () => {
-      if (status === 'done') openViewer(def, rec);
+      if (isMatrix) openTextEntry(def, rec);
+      else if (status === 'done') openViewer(def, rec);
       else if (status === 'text' || def.type === 'grade') openTextEntry(def, rec);
       else openCamera(def);
     };
@@ -218,23 +225,29 @@ async function renderShotList() {
   $('#btnExport').disabled = done === 0;
 }
 function baseNameFor(def) {
-  return sanitize(`${curAlbum.artist} - ${curAlbum.title} - ${pad2(def.n)} ${def.name}`);
+  return sanitize(`${curAlbum.artist} - ${curAlbum.title} - ${pad2(def.n)} ${def.fname || def.name}`);
 }
 function filenameFor(def) {
   return baseNameFor(def) + '.jpg';
 }
+function slotFilename(def, n) {
+  return `${baseNameFor(def)} ${def.letter}${n}.jpg`;
+}
 
 /* ---------- camera ---------- */
-let stream = null, track = null, imageCapture = null, curShot = null, torchOn = false, manualFocus = false;
-async function openCamera(def) {
+let stream = null, track = null, imageCapture = null, curShot = null, curSlot = null, torchOn = false, manualFocus = false;
+function camBack() {
+  return curSlot ? openTextEntry(curShot) : backToAlbum();
+}
+async function openCamera(def, slot) {
   curShot = def;
+  curSlot = def.type === 'matrix' ? (slot || 1) : null;
   freeReview();
-  show('scr-camera', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
-  $('#camLabel').textContent = `${pad2(def.n)} · ${def.name}`;
+  const label = curSlot ? `${pad2(def.n)} ${def.name} · Photo ${curSlot}` : `${pad2(def.n)} ${def.name}`;
+  show('scr-camera', { title: label, back: camBack });
+  $('#camLabel').textContent = curSlot ? `${pad2(def.n)} · ${def.name} · Photo ${curSlot}` : `${pad2(def.n)} · ${def.name}`;
   $('#camTip').textContent = TIPS[def.type] || '';
   $('#btnSkip').classList.toggle('hidden', !def.opt);
-  $('#btnTypeIt').classList.toggle('hidden', def.type !== 'matrix');
-  $('#btnType2').classList.toggle('hidden', def.type !== 'matrix');
   $('#camFallback').classList.add('hidden');
   await startCam();
 }
@@ -390,7 +403,7 @@ function openReview(bmp) {
     rot: 0, scale: 1, dpr: 1, dragging: null,
   };
   $('#btnRotate').textContent = '⟳ 0°';
-  show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot) });
+  show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
   layoutReview();
   autoDetect();
 }
@@ -436,7 +449,7 @@ async function autoDetect() {
   if (curShot.type === 'matrix') {
     review.quad = fullQuad();
     drawReview();
-    toast('Full frame kept for dead wax — drag corners to crop if you like');
+    toast('Full frame kept for the run-out — drag corners to crop if you like');
     return;
   }
   if (curShot.type === 'label') {
@@ -599,7 +612,7 @@ $('#btnRotate').onclick = () => {
   review.rot = (review.rot + 1) % 4;
   $('#btnRotate').textContent = `⟳ ${review.rot * 90}°`;
 };
-$('#btnRetake').onclick = () => openCamera(curShot);
+$('#btnRetake').onclick = () => openCamera(curShot, curSlot);
 $('#btnSave').onclick = saveShot;
 
 function isAxisRect(q) {
@@ -676,9 +689,16 @@ async function saveShot() {
     if (review.rot) outCanvas = rotateCanvas(outCanvas, review.rot);
     const blob = await new Promise((res, rej) =>
       outCanvas.toBlob(b => b ? res(b) : rej(new Error('JPEG encode failed')), 'image/jpeg', settings.quality));
-    await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'done', blob, when: Date.now() });
-    backToAlbum();
-    toast('Saved ✓');
+    if (curSlot) {
+      await dbPut('shots', { albumId: curAlbum.id, shotId: slotId(curShot, curSlot), status: 'photo', blob, when: Date.now() });
+      const saved = curSlot;
+      await openTextEntry(curShot);
+      toast(`Photo ${saved} saved ✓`);
+    } else {
+      await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'done', blob, when: Date.now() });
+      backToAlbum();
+      toast('Saved ✓');
+    }
   } catch (e) {
     console.error(e);
     toast('Save failed: ' + e.message, 4000);
@@ -688,28 +708,77 @@ async function saveShot() {
   }
 }
 
-/* ---------- manual text entry (matrix / dead wax / vinyl grade) ---------- */
+/* ---------- manual text entry (matrix/runout / vinyl grade) ---------- */
+let textDraft = null, slotUrls = [];
+function freeSlotUrls() { slotUrls.forEach(u => URL.revokeObjectURL(u)); slotUrls = []; }
+function stashDraft() {
+  textDraft = { albumId: curAlbum.id, shotId: curShot.id, text: $('#inShotText').value };
+}
 async function openTextEntry(def, rec) {
   stopCam();
   freeReview();
   curShot = def;
+  curSlot = null;
   if (rec === undefined) rec = await dbGet('shots', [curAlbum.id, def.id]);
   const isGrade = def.type === 'grade';
   $('#inShotTextLabel').textContent = isGrade
     ? (def.name.includes('Cover') ? 'Cover grade' : 'Vinyl grade for this side')
-    : 'Matrix / dead wax text — exactly as etched or stamped';
+    : 'Matrix/Runout text — exactly as etched or stamped';
   $('#inShotText').placeholder = isGrade ? 'e.g. VG+' : 'e.g. ST-A-681234-B-1';
-  $('#inShotText').value = (rec && rec.status === 'text' && rec.text) || '';
-  $('#btnTextPhoto').classList.toggle('hidden', isGrade);
+  let text = (rec && rec.status === 'text' && rec.text) || '';
+  // restore unsaved text after a camera / photo-viewer round-trip
+  if (textDraft && textDraft.albumId === curAlbum.id && textDraft.shotId === def.id) {
+    text = textDraft.text;
+  }
+  textDraft = null;
+  $('#inShotText').value = text;
   $('#btnTextDelete').classList.toggle('hidden', !(rec && rec.status === 'text'));
   stopVoice();
   $('#btnTextVoice').classList.toggle('hidden', isGrade || !SpeechRec);
   $('#voiceHint').classList.toggle('hidden', isGrade || !SpeechRec);
+  $('#photoSection').classList.toggle('hidden', isGrade);
+  if (!isGrade) await renderSlots(def);
   show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
 }
-$('#btnTypeIt').onclick = () => openTextEntry(curShot);
-$('#btnType2').onclick = () => openTextEntry(curShot);
-$('#btnTextPhoto').onclick = () => { stopVoice(); openCamera(curShot); };
+async function renderSlots(def) {
+  freeSlotUrls();
+  const shots = await shotsFor(curAlbum.id);
+  const byId = Object.fromEntries(shots.map(s => [s.shotId, s]));
+  const firstEmpty = SLOTS.find(n => !byId[slotId(def, n)]);
+  const sel = $('#slotSel');
+  sel.value = String(firstEmpty || 1);
+  const holder = $('#slotThumbs');
+  holder.innerHTML = '';
+  for (const n of SLOTS) {
+    const rec = byId[slotId(def, n)];
+    const b = document.createElement('button');
+    b.className = 'slotthumb' + (rec ? ' filled' : '') + (String(n) === sel.value ? ' sel' : '');
+    if (rec) {
+      const url = URL.createObjectURL(rec.blob);
+      slotUrls.push(url);
+      const img = document.createElement('img');
+      img.src = url;
+      b.appendChild(img);
+      b.onclick = () => { stashDraft(); openSlotViewer(def, n, rec); };
+    } else {
+      b.textContent = String(n);
+      b.onclick = () => {
+        sel.value = String(n);
+        $$('#slotThumbs .slotthumb').forEach((el, i) => el.classList.toggle('sel', i + 1 === n));
+      };
+    }
+    holder.appendChild(b);
+  }
+}
+$('#slotSel').onchange = () => {
+  const v = Number($('#slotSel').value);
+  $$('#slotThumbs .slotthumb').forEach((el, i) => el.classList.toggle('sel', i + 1 === v));
+};
+$('#btnSlotShoot').onclick = () => {
+  stashDraft();
+  stopVoice();
+  openCamera(curShot, Number($('#slotSel').value) || 1);
+};
 $('#btnTextSave').onclick = async () => {
   const t = $('#inShotText').value.trim();
   if (!t) return toast(curShot.type === 'grade' ? 'Type the grade first, or go back' : 'Type the matrix text first, or go back');
@@ -717,7 +786,7 @@ $('#btnTextSave').onclick = async () => {
   backToAlbum();
   toast('Saved ✓');
 };
-/* ---------- voice dictation (matrix / dead wax) ---------- */
+/* ---------- voice dictation (matrix/runout) ---------- */
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 let speech = null;
 const VOICE_MAP = {
@@ -779,20 +848,35 @@ $('#btnTextDelete').onclick = async () => {
 };
 
 /* ---------- viewer ---------- */
-let viewShot = null, viewerUrl = null;
+let viewShot = null, viewSlot = null, viewerUrl = null;
 function openViewer(def, rec) {
   viewShot = def;
+  viewSlot = null;
   if (viewerUrl) URL.revokeObjectURL(viewerUrl);
   viewerUrl = URL.createObjectURL(rec.blob);
   $('#viewerImg').src = viewerUrl;
   $('#viewerName').textContent = filenameFor(def);
   show('scr-viewer', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
 }
-$('#btnVRetake').onclick = () => openCamera(viewShot);
+function openSlotViewer(def, n, rec) {
+  viewShot = def;
+  viewSlot = n;
+  if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+  viewerUrl = URL.createObjectURL(rec.blob);
+  $('#viewerImg').src = viewerUrl;
+  $('#viewerName').textContent = slotFilename(def, n);
+  show('scr-viewer', { title: `${pad2(def.n)} ${def.name} · Photo ${n}`, back: () => openTextEntry(def) });
+}
+$('#btnVRetake').onclick = () => openCamera(viewShot, viewSlot);
 $('#btnVDelete').onclick = async () => {
   if (!confirm('Delete this photo?')) return;
-  await dbDel('shots', [curAlbum.id, viewShot.id]);
-  backToAlbum();
+  if (viewSlot) {
+    await dbDel('shots', [curAlbum.id, slotId(viewShot, viewSlot)]);
+    openTextEntry(viewShot);
+  } else {
+    await dbDel('shots', [curAlbum.id, viewShot.id]);
+    backToAlbum();
+  }
 };
 
 /* ---------- export ---------- */
@@ -803,11 +887,21 @@ async function openExport() {
   const byId = Object.fromEntries(shots.map(s => [s.shotId, s]));
   exportItems = SHOTS
     .filter(def => def.disc <= curAlbum.discs)
-    .map(def => ({ def, rec: byId[def.id] }))
-    .filter(x => x.rec && (x.rec.status === 'done' || x.rec.status === 'text'))
-    .map(x => x.rec.status === 'text'
-      ? { name: baseNameFor(x.def) + '.txt', blob: new Blob([x.rec.text + '\n'], { type: 'text/plain' }), mime: 'text/plain' }
-      : { name: filenameFor(x.def), blob: x.rec.blob, mime: 'image/jpeg' });
+    .flatMap(def => {
+      const rec = byId[def.id];
+      const items = [];
+      if (rec && rec.status === 'text')
+        items.push({ name: baseNameFor(def) + '.txt', blob: new Blob([rec.text + '\n'], { type: 'text/plain' }), mime: 'text/plain' });
+      else if (rec && rec.status === 'done')
+        items.push({ name: filenameFor(def), blob: rec.blob, mime: 'image/jpeg' });
+      if (def.type === 'matrix') {
+        for (const n of SLOTS) {
+          const sr = byId[slotId(def, n)];
+          if (sr) items.push({ name: slotFilename(def, n), blob: sr.blob, mime: 'image/jpeg' });
+        }
+      }
+      return items;
+    });
   const fmtSize = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
   $('#exportList').innerHTML = exportItems
     .map(i => `<div class="exportrow"><div>${esc(i.name)}</div><span>${fmtSize(i.blob.size)}</span></div>`)
@@ -1294,9 +1388,49 @@ $('#btnInstall').onclick = () => {
   $('#btnInstall').classList.add('hidden');
 };
 
+/* ---------- one-time migration: Dead Wax Other entries fold into Matrix/Runout ---------- */
+async function migrateRunout() {
+  if (await dbGet('kv', 'migratedRunout')) return;
+  const albums = await dbAll('albums');
+  for (const al of albums) {
+    const shots = await shotsFor(al.id);
+    const byId = Object.fromEntries(shots.map(s => [s.shotId, s]));
+    for (const side of [1, 2, 3, 4]) {
+      const mxId = `s${side}matrix`, dwoId = `s${side}dwo`;
+      const mx = byId[mxId], dwo = byId[dwoId];
+      const putSlot = async blob => {
+        const free = SLOTS.find(n => !byId[`${mxId}_p${n}`]);
+        if (!free) return;
+        const rec = { albumId: al.id, shotId: `${mxId}_p${free}`, status: 'photo', blob, when: Date.now() };
+        byId[rec.shotId] = rec;
+        await dbPut('shots', rec);
+      };
+      // a matrix photo saved while matrix entries were camera-first becomes slot photo 1
+      if (mx && mx.status === 'done' && mx.blob) {
+        await putSlot(mx.blob);
+        delete byId[mxId];
+        await dbDel('shots', [al.id, mxId]);
+      }
+      if (!dwo) continue;
+      if (dwo.status === 'text' && dwo.text) {
+        const cur = byId[mxId];
+        const merged = cur && cur.status === 'text' && cur.text ? cur.text + '\n' + dwo.text : dwo.text;
+        const rec = { albumId: al.id, shotId: mxId, status: 'text', text: merged, when: Date.now() };
+        byId[mxId] = rec;
+        await dbPut('shots', rec);
+      } else if (dwo.status === 'done' && dwo.blob) {
+        await putSlot(dwo.blob);
+      }
+      await dbDel('shots', [al.id, dwoId]);
+    }
+  }
+  await dbPut('kv', 1, 'migratedRunout');
+}
+
 /* ---------- init ---------- */
 (async function init() {
   await loadSettings();
+  try { await migrateRunout(); } catch (e) { console.error('runout migration failed', e); }
   if ('serviceWorker' in navigator &&
       (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

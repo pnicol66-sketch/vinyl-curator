@@ -9,16 +9,19 @@ fine-tune), names every file from the label artist + album, and saves the set to
 
 01 Front Cover · 02 Front Cover Grade · 03 Back Cover · 04 Back Cover Grade · 05 Other ·
 06–13 Side 1–4 Labels and Vinyl Grades ·
-14–21 Side 1–4 Matrix and Dead Wax Other
+14/16/18/20 Side 1–4 Matrix/Runout (typed text + up to 4 optional photos each; numbers
+15/17/19/21 are retired — they belonged to the old "Dead Wax Other" entries, now merged
+into the Matrix/Runout text)
 
 Grade entries (02, 04, 07, 09, 11, 13) are typed, not photographed, and export as `.txt`.
 A 1-disc album shows only sides 1–2; choosing "2 discs" adds sides 3–4.
-"Other" and "Dead Wax Other" shots are optional and can be skipped.
+The "Other" shot is optional and can be skipped.
 
 Files are named like:
 
     Fleetwood Mac - Rumours - 01 Front Cover.jpg
-    Fleetwood Mac - Rumours - 14 Side 1 Matrix.jpg
+    Fleetwood Mac - Rumours - 14 Side 1 Matrix Runout.txt
+    Fleetwood Mac - Rumours - 14 Side 1 Matrix Runout A1.jpg
 
 ## Getting it on your phone
 
@@ -110,7 +113,7 @@ improvements.
 
 - Lay covers and discs on a plain background that contrasts with them (light for dark
   covers, dark for light ones) — that's what the outline detection keys on.
-- For matrix / dead-wax shots use the 🔦 torch button and tilt the disc slightly so the
+- For matrix/runout shots use the 🔦 torch button and tilt the disc slightly so the
   etched characters catch shadows; use the zoom slider to get close. If the image goes
   blurry up close, drag the **Focus** slider (left = nearest) or tap **AF** to re-run
   autofocus (both appear only on cameras that support focus control).
@@ -118,8 +121,10 @@ improvements.
   to keep the whole frame. **⟳** rotates the saved photo in 90° steps.
 - Label shots crop as a **circle** (saved on a white square): drag inside the circle to
   move it, drag its edge to resize.
-- Matrix / dead-wax entries can be **typed instead of photographed**: tap the ⌨ button on
-  the camera screen. Typed entries export as matching `.txt` files next to the photos.
+- Matrix/Runout entries are **typed** (keyboard or 🎤 dictation) and export as `.txt`;
+  each side also holds up to **4 optional photos** — pick a slot in the dropdown on the
+  text screen, tap 📷, and the photos export as `… Matrix Runout A1.jpg`–`A4.jpg`
+  (B/C/D for sides 2–4).
 
 ## Privacy
 

@@ -54,26 +54,25 @@ Entries are numbered in the order you work through them. 📷 = photo, ⌨ = typ
 | 11 | Vinyl Grade Side 3 | ⌨ | 2-disc albums only |
 | 12 | Side 4 Label | 📷 | 2-disc albums only |
 | 13 | Vinyl Grade Side 4 | ⌨ | 2-disc albums only |
-| 14 | Side 1 Matrix | 📷/⌨ | can be typed instead of photographed |
-| 15 | Side 1 Dead Wax Other | 📷/⌨ | optional |
-| 16 | Side 2 Matrix | 📷/⌨ | |
-| 17 | Side 2 Dead Wax Other | 📷/⌨ | optional |
-| 18 | Side 3 Matrix | 📷/⌨ | 2-disc albums only |
-| 19 | Side 3 Dead Wax Other | 📷/⌨ | optional, 2-disc albums only |
-| 20 | Side 4 Matrix | 📷/⌨ | 2-disc albums only |
-| 21 | Side 4 Dead Wax Other | 📷/⌨ | optional, 2-disc albums only |
+| 14 | Side 1 Matrix/Runout | ⌨ + 📷×4 | typed text + up to 4 optional photos |
+| 16 | Side 2 Matrix/Runout | ⌨ + 📷×4 | |
+| 18 | Side 3 Matrix/Runout | ⌨ + 📷×4 | 2-disc albums only |
+| 20 | Side 4 Matrix/Runout | ⌨ + 📷×4 | 2-disc albums only |
 
-Files are named `Artist - Title - NN Entry Name.jpg` (photos) or `.txt` (typed entries), e.g.:
+Numbers 15/17/19/21 are retired — they belonged to the old "Dead Wax Other" entries, whose text now lives in the Matrix/Runout entry for that side. The numbering gaps are deliberate so older files in Drive keep their names.
+
+Files are named `Artist - Title - NN Entry Name.jpg` (photos) or `.txt` (typed entries). Matrix/Runout photos add a per-side letter and slot number (A1–A4 for side 1, B for side 2, C/D for sides 3/4), e.g.:
 
     Fleetwood Mac - Rumours - 01 Front Cover.jpg
     Fleetwood Mac - Rumours - 07 Vinyl Grade Side 1.txt
-    Fleetwood Mac - Rumours - 14 Side 1 Matrix.jpg
+    Fleetwood Mac - Rumours - 14 Side 1 Matrix Runout.txt
+    Fleetwood Mac - Rumours - 14 Side 1 Matrix Runout A1.jpg
 
 ### Taking photos
 
 - Lay the cover or disc on a **plain, contrasting background** — that is what the outline detection keys on.
 - After the shot, the app auto-detects the outline: a four-corner frame for covers/matrix, a **circle** for labels. Drag the amber corners (or the circle edge) to fine-tune; **Auto** retries detection, **Full** keeps the whole frame, **⟳** rotates in 90° steps, then **Save**.
-- For matrix / dead-wax shots: get close, use the **🔦 torch**, and tilt the disc so the etching catches shadows. The **Zoom** and **Focus** sliders appear when the camera supports them.
+- For matrix/runout shots: get close, use the **🔦 torch**, and tilt the disc so the etching catches shadows. The **Zoom** and **Focus** sliders appear when the camera supports them.
 - If the picture goes blurry up close, drag the **Focus** slider (left = nearest) to focus manually, or tap **AF** to trigger an autofocus pass. Releasing the Zoom slider also re-runs autofocus.
 - If your phone doesn't offer focus control in the browser (common on iPhone), use **🖼 import** and take the close-up with the phone's own camera app instead — it will be pulled straight into the same crop/save flow.
 - **🖼 Import** loads a photo taken with the phone's own camera app instead.
@@ -82,8 +81,14 @@ Files are named `Artist - Title - NN Entry Name.jpg` (photos) or `.txt` (typed e
 ### Typed entries
 
 - **Grades (02, 04, 07–13)**: tapping the row goes straight to a text screen — type the grade (e.g. `NM`, `VG+`) and **Save text**. No camera involved.
-- **Matrix / dead-wax (14–21)**: tap **⌨** on the camera screen to type the runout inscription exactly as etched instead of photographing it.
+- **Matrix/Runout (14/16/18/20)**: tapping the row opens the text screen — type or **🎤 dictate** the runout inscription exactly as etched (include anything you'd previously have put in "Dead Wax Other", on its own line) and **Save text**. The checklist tick means the text is entered; photos are optional extras.
 - Typed entries export as `.txt` files alongside the photos and show a ⌨ tag with the text in the checklist.
+
+### Matrix/Runout photos (optional)
+
+- On a Matrix/Runout text screen, the **Matrix/Runout photos** section holds up to **4 photos per side**: pick a slot in the dropdown (it auto-selects the next empty one), tap **📷 Take photo**, shoot and crop as usual — you're returned to the text screen with the slot filled, ready to take the next one.
+- Tap a filled thumbnail to view, retake, or delete that photo. Any text you've typed but not yet saved survives the round-trip to the camera.
+- Photos upload alongside everything else as `… 14 Side 1 Matrix Runout A1.jpg` … `A4.jpg` (B/C/D for the other sides).
 
 Recognised grades (best → worst): **M, NM (M-), EX+, EX, VG+, VG, VG-, G+, G, G-, F, P**.
 
