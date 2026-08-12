@@ -1252,6 +1252,10 @@ async function openArcAlbum(f) {
     toast('Album is back on the home screen');
     openAlbum(localAl.id);
   } : null;
+  const reBtn = $('#btnReimport');
+  reBtn.classList.toggle('hidden', !!localAl);
+  reBtn.disabled = false;
+  reBtn.onclick = localAl ? null : () => reimportAlbum(f);
   try {
     const q = `'${f.id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
     const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
@@ -1289,6 +1293,107 @@ function arcThumb(file, holder) {
   };
   if (file.thumbnailLink) img.src = file.thumbnailLink;
   else img.onerror();
+}
+
+/* ---------- re-import an uploaded album from Drive ---------- */
+async function reimportAlbum(f) {
+  const us = f.name.indexOf('_');
+  const artist = us > 0 ? f.name.slice(0, us) : f.name;
+  const title = (us > 0 ? f.name.slice(us + 1) : '') || '(untitled)';
+  const dup = (await dbAll('albums')).find(a =>
+    a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === title.toLowerCase());
+  if (dup && !confirm(`"${artist} — ${title}" already exists on this phone. Download a second copy anyway?`)) return;
+  const st = $('#arcAlbumStatus');
+  const btn = $('#btnReimport');
+  btn.disabled = true;
+  try {
+    const q = `'${f.id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+    const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
+      '&fields=files(id,name,mimeType)&orderBy=name&pageSize=1000');
+    const files = r.files || [];
+    // plan which file feeds which record before downloading anything
+    const jobs = [];
+    for (const file of files) {
+      const nm = file.name.match(/ - (\d\d) /);
+      if (!nm) continue;
+      const num = Number(nm[1]);
+      const isImg = (file.mimeType || '').startsWith('image/');
+      const isTxt = !isImg && (/\.txt$/i.test(file.name) || (file.mimeType || '').startsWith('text/'));
+      if (num >= 14 && num <= 21) {
+        // matrix/runout block; odd numbers are the retired Dead Wax Other files
+        const def = SHOTS.find(s => s.id === `s${Math.floor((num - 14) / 2) + 1}matrix`);
+        if (!def) continue;
+        if (isTxt) jobs.push({ kind: 'mtext', def, file, legacy: num % 2 === 1 });
+        else if (isImg) {
+          const sm = file.name.match(/ [A-D]([1-4])\.[^.]+$/i);
+          jobs.push({ kind: 'slot', def, file, slot: sm ? Number(sm[1]) : null });
+        }
+        continue;
+      }
+      const def = SHOTS.find(s => s.n === num);
+      if (!def) continue;
+      if (def.type === 'grade' && isTxt) jobs.push({ kind: 'text', def, file });
+      else if (def.type !== 'grade' && isImg) jobs.push({ kind: 'photo', def, file });
+    }
+    if (!jobs.length) {
+      st.textContent = '';
+      btn.disabled = false;
+      return toast('No recognizable album files in this folder.');
+    }
+    const al = {
+      id: Date.now().toString(36),
+      artist, title,
+      discs: jobs.some(j => j.def.disc === 2) ? 2 : 1,
+      created: Date.now(),
+      driveFolderName: $('#arcFolder').value || settings.driveFolder,
+      driveFolderId: f.id,
+    };
+    const taken = {};
+    const texts = {};      // matrix shotId -> {main, extra[]}
+    const usedSlots = {};  // matrix shotId -> {slotNumber: true}
+    let done = 0;
+    for (const j of jobs) {
+      done++;
+      st.textContent = `Downloading ${done}/${jobs.length}: ${j.file.name}`;
+      const blob = await driveBlob(j.file.id);
+      if (j.kind === 'photo') {
+        if (taken[j.def.id]) continue;
+        taken[j.def.id] = true;
+        await dbPut('shots', { albumId: al.id, shotId: j.def.id, status: 'done', blob, when: Date.now() });
+      } else if (j.kind === 'text') {
+        if (taken[j.def.id]) continue;
+        taken[j.def.id] = true;
+        const t = (await blob.text()).trim();
+        if (t) await dbPut('shots', { albumId: al.id, shotId: j.def.id, status: 'text', text: t, when: Date.now() });
+      } else if (j.kind === 'mtext') {
+        const t = (await blob.text()).trim();
+        if (!t) continue;
+        const cur = texts[j.def.id] || (texts[j.def.id] = { main: '', extra: [] });
+        if (j.legacy) cur.extra.push(t);
+        else cur.main = cur.main ? cur.main + '\n' + t : t;
+      } else if (j.kind === 'slot') {
+        const used = usedSlots[j.def.id] || (usedSlots[j.def.id] = {});
+        let slot = j.slot;
+        if (!slot || used[slot]) slot = SLOTS.find(s2 => !used[s2]);
+        if (!slot) continue;
+        used[slot] = true;
+        await dbPut('shots', { albumId: al.id, shotId: slotId(j.def, slot), status: 'photo', blob, when: Date.now() });
+      }
+    }
+    for (const sid of Object.keys(texts)) {
+      const t = [texts[sid].main, ...texts[sid].extra].filter(Boolean).join('\n');
+      if (t) await dbPut('shots', { albumId: al.id, shotId: sid, status: 'text', text: t, when: Date.now() });
+    }
+    await dbPut('albums', al);
+    st.textContent = '';
+    toast('Album downloaded ✓ — add to it, then re-upload when done');
+    openAlbum(al.id);
+  } catch (e) {
+    console.error(e);
+    st.textContent = '';
+    btn.disabled = false;
+    toast('Download failed: ' + e.message, 4500);
+  }
 }
 
 async function openArcView(file) {

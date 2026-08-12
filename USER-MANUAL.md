@@ -102,6 +102,14 @@ From the checklist tap **Save photos** — three options:
 
 After a successful save the app returns to the home screen, ready for the next album.
 
+### Uploaded albums (the 📁 archive)
+
+After a save, the album moves off the home screen into **📁 Uploaded albums**. From there you can browse each album's files in Drive (direct-upload setup required), and bring an album back to work on it:
+
+- **↩ Move back to home screen** — shown when the album's photos are still on this phone; instant.
+- **⬇ Bring back into this app** — shown when they aren't (new phone, app data wiped): downloads the album's files from Drive and rebuilds the checklist — covers, labels, grades, matrix/runout text, and deadwax photo slots all land back where they belong. Add to it, then re-upload; existing Drive files are updated in place, so the sheet import stays consistent.
+- Only albums uploaded with the app's **direct Drive upload** can be browsed and re-downloaded — albums sent via the Share sheet aren't visible to the app in Drive (Google's privacy rules), though "Move back" still works while their photos remain on the phone.
+
 ### Settings ⚙
 
 Google OAuth Client ID (for direct upload), the **Drive folder for uploads** (default `Vinyl Curator` — leave it unless you have a reason to change it; the sheet imports from the folder of the same name), photo size (1600/2400/3200 px), JPEG quality, and **Delete ALL app data** (wipes the phone's local albums, photos, and settings — exported files in Drive are untouched).
