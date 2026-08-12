@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 1.5 · 7 August 2026**
+**Version 1.6 · 12 August 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
@@ -8,6 +8,7 @@ Contact: pnicol66@gmail.com · Personal use by permission; please don't redistri
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.6 | 2026-08-12 | **Matrix/Runout rework**, app and sheet: checklist entries renamed Side N Matrix/Runout with up to **4 optional photos per side**, "Dead Wax Other" merged in (numbers 15/17/19/21 retired); sheet columns renamed **Matrix/Runout A–D** with 16 photo columns that appear as photos arrive; one-time Drive merge for older albums. New **Label Variant Hierarchy** research column. Sales upgrades: **asking-price columns** (eBay Start / Buy Now, Discogs List Price) choose Fixed Price vs Auction drafts, and **Listing Supplement** columns append your boilerplate to every listing. Pickers now hide already-processed albums. Slimmer menus with a single **Update my sheet** item for migrations. App: camera **Focus** controls, the **📁 Uploaded albums** archive with re-import from Drive, multiple upload folders in Settings. |
 | 1.5 | 2026-08-07 | Eight new **detail columns** (Format → Country Of Origin) filled by AI research, which now also writes **Label Notes** (label provenance). New **Vinyl Sales** menu — Discogs draft listings and eBay draft-file export. New **collection webpage** — a private card view of the catalogue for any device. Batch research now runs ahead in the background while you review, with a live progress line. New **Kimi K3** model option. |
 | 1.4 | 2026-08-06 | New **Album Story** sheet column (right after Side 4): the album's background and history, filled in by AI pressing research. Existing sheets add it via **Vinyl Curator → Add Album Story column**. |
 | 1.3 | 2026-08-06 | After a successful save (Share, Drive upload, or ZIP) the app returns to the home screen. |
@@ -112,7 +113,9 @@ After a save, the album moves off the home screen into **📁 Uploaded albums**.
 
 ### Settings ⚙
 
-Google OAuth Client ID (for direct upload), the **Drive folder for uploads** (default `Vinyl Curator` — leave it unless you have a reason to change it; the sheet imports from the folder of the same name), photo size (1600/2400/3200 px), JPEG quality, and **Delete ALL app data** (wipes the phone's local albums, photos, and settings — exported files in Drive are untouched).
+Google OAuth Client ID (for direct upload), the **Drive folders for uploads** (default `Vinyl Curator` — leave it unless you have a reason to change it; the sheet imports from the folder of the same name), photo size (1600/2400/3200 px), JPEG quality, and **Delete ALL app data** (wipes the phone's local albums, photos, and settings — exported files in Drive are untouched).
+
+You can keep **more than one upload folder** (say, one per collection): add folders to the list in Settings, tap one to make it the default, ✕ to remove it. With two or more folders set up, the save screen shows an "upload into" dropdown, and a re-upload preselects the folder the album went to last time. (On the sheet side, switching import folders is a separate setting per sheet.)
 
 ## 3. The Google Sheet
 
@@ -126,17 +129,16 @@ Access is by permission — if you see a "not licensed" message, contact pnicol6
 
 ### The Vinyl Curator menu
 
-- **Add albums to sheet…** — pick album folders from Drive; photos appear as thumbnails in the matching columns, typed matrix text and grades fill their cells. Existing cell values are **never overwritten**; re-importing only fills blanks. Each row is linked to its Drive folder, so sorting or renaming doesn't break the connection.
+- **Add albums to sheet…** — pick album folders from Drive; photos appear as thumbnails in the matching columns, typed matrix text and grades fill their cells. The picker shows only albums **not yet in the sheet** — a "Show N previously added" link expands the rest if you need to re-import one. Existing cell values are **never overwritten**; re-importing only fills blanks. Each row is linked to its Drive folder, so sorting or renaming doesn't break the connection.
 - **Rotate selected photo 90°…** — click a photo cell first; rewrites the actual Drive file so research and future imports see the corrected orientation.
 - **Sort entries by artist, then title**.
 - **Move albums to For Sale / Sold / back to Collection** — moves whole rows between the three tabs.
 - **Refresh folder tags / check duplicates**.
 - **Format sheets** — text wrap, column widths, row heights, frozen headers, on all tabs.
 - **Recalculate cover + vinyl grades (all tabs)** — see aggregates below.
-- **Protect header rows (all tabs)** — see header lock below.
-- **Add Album Story column (one-time, all tabs)** — for sheets made before v1.4: inserts the **Album Story** column right after **Side 4** on every tab. Safe to run twice — it does nothing if the column already exists.
-- **Add detail columns (one-time, all tabs)** — for sheets made before v1.5: inserts eight columns right after **Album Title** on every tab — **Format, Genre, Speed, Producer, Composer, Conductor, Performer/Orchestra, Country Of Origin**. Also safe to run twice. AI research fills them (Country Of Origin = the pressing country of *your copy*, not the artist's nationality; the classical-music fields stay blank for non-classical records), or type them yourself.
 - **Open collection webpage… / Set collection webpage address…** — see the collection webpage below.
+- **Update my sheet (after a script update)** — run this once after pasting a new script version: it adds any new columns and layout changes to all three tabs (it has replaced the old one-off "Add … column" items). Safe to run any time — it does nothing if your sheet is already current.
+- **Merge Matrix/Runout files in Drive (one-time)** — for albums exported **before v1.6**: per side, folds the old "Dead Wax Other" text file into the Matrix/Runout text file and renames old-scheme files and photos to the new names (photo slots A1–D4), so future imports and re-imports find everything. Run it once; it works through your whole import folder.
 
 ### Grade aggregates
 
@@ -148,6 +150,10 @@ Typed grades import into **Front/Back Cover Grade** and **Vinyl Grade Side 1–4
 - A grade the sheet doesn't recognise is kept visibly (values joined with `/`) instead of being averaged away.
 - Aggregates fill on import and refresh as more sides arrive; a value you typed yourself is never overwritten by a plain import. **Recalculate cover + vinyl grades** re-derives everything from the current side/cover grades.
 
+### Matrix/Runout columns
+
+The typed runout inscriptions live in **Matrix/Runout A–D** (one column per side; the old separate "Deadwax" columns were merged into them in v1.6). Each side also has four photo columns — **Matrix/Runout A Photo 1–4** and so on — where the optional close-ups from the app land. To keep the sheet tidy, a photo column stays **hidden while it's empty** and appears automatically the first time an import puts a photo in it.
+
 ### The header row is locked
 
 Row 1's column names drive the import — the script finds columns by header text. The header row therefore carries a protection: editing it pops **"are you sure?"** first. Click through only if you genuinely mean to change a header.
@@ -155,13 +161,13 @@ Row 1's column names drive the import — the script finds columns by header tex
 ### AI pressing research (optional)
 
 1. Create an API key at **console.anthropic.com** (add ~$5 credits), then **Vinyl Research → Set Anthropic API key…** and paste it. The key is stored privately in your Google account, never in the sheet. (Alternative: a **Kimi K3** key from platform.kimi.ai via **Set Kimi API key…** — its billing is separate from Anthropic.)
-2. **Vinyl Research → Research albums with AI…** — tick albums, pick the model (Claude Opus 5 = deepest, ~$0.10–0.50/album; Claude Sonnet 5 = faster and about a third of the cost; Kimi K3 = the alternative if you set a Kimi key).
-3. The AI sees the row's photos, typed matrix numbers, and current data, then researches with live web search (Discogs variant first, label-dating references, real sales history — always pricing your pressing, not the master release). Besides the pressing fields it fills the **detail columns**, writes **Label Notes** (what your exact label variant proves about the pressing's place in the label's timeline), and an **Album Story** — how the album came to be, its place in the artist's career, its reception and legacy.
+2. **Vinyl Research → Research albums with AI…** — tick albums, pick the model (Claude Opus 5 = deepest, ~$0.10–0.50/album; Claude Sonnet 5 = faster and about a third of the cost; Kimi K3 = the alternative if you set a Kimi key). Like the import picker, the list shows only albums **not yet researched** — "Show N already researched" expands the rest.
+3. The AI sees the row's cover and label photos, your typed matrix/runout transcriptions (its dead-wax evidence — type them carefully), and current data, then researches with live web search (Discogs variant first, label-dating references, real sales history — always pricing your pressing, not the master release). Besides the pressing fields it fills the **detail columns** (Country Of Origin = the pressing country of *your copy*, not the artist's nationality; the classical-music fields stay blank for non-classical records), writes **Label Notes** (what your exact label variant proves about the pressing's place in the label's timeline), a **Label Variant Hierarchy** — the label's variant chronology, one variant per line with year, distinguishing feature and value band, and your copy marked in place — and an **Album Story** — how the album came to be, its place in the artist's career, its reception and legacy.
 4. Results appear in an approval screen with current values alongside — edit anything, then **Approve + import**, **Research further…** (with your guidance), or **Skip**.
 
 **Batches research themselves.** While you review one album, the rest of your selection quietly researches one album at a time in the background — a blue line under the status shows which album is running, its round, and how many results are already waiting. **Approve + import** or **Skip** opens the next result instantly once it's ready. Nothing is ever written to the sheet without your Approve, and closing the dialog stops the pipeline (only the step already running finishes).
 
-**Vinyl Values → Calculate album values with AI…** works the same way for valuations, including the background batching.
+**Vinyl Values → Calculate album values with AI…** works the same way for valuations, including the background batching and the "not yet valued" default view.
 
 ### The collection webpage
 
@@ -175,9 +181,19 @@ Puts **For Sale** rows up for sale on the two big marketplaces — always as **d
 
 - **List albums on Discogs…** — needs your own Discogs personal access token (discogs.com → Settings → Developers → **Set Discogs token…**) and a Discogs seller account. Per album it searches Discogs (catalogue number first), you pick the exact pressing from the candidates (or paste a release link), review the suggested condition/sleeve grades, price, and comments, and it creates the listing through the Discogs API as a **draft** — publish from Discogs after checking it.
 - **Export albums to eBay draft file…** — no eBay developer account needed. Writes a Seller Hub bulk-upload CSV to the Drive folder **"Vinyl Curator eBay exports"**; upload it at eBay → Seller Hub → Reports → Uploads and it creates listing **drafts** with title, price, description, and the item specifics (artist, label, year, gradings, matrix numbers, format/genre and more) filled in — you add photos and shipping on eBay and publish from there.
-- **Add sales columns (one-time, all tabs)** — adds **Discogs Listing** and **eBay Status** columns so both flows record what they did and when.
 
-Prices prefill from **Value Estimate** (or the first number in the Price Guide/Range) — always your call before anything is created.
+Both flows record what they did and when in the **Discogs Listing** and **eBay Status** columns.
+
+**Setting your asking prices.** The For Sale tab has three price columns — **eBay Start Price**, **eBay Buy Now Price**, and **Discogs List Price** — and they decide what kind of eBay draft each row becomes:
+
+- Buy Now price only → a **Fixed Price** listing at that price.
+- Start price only → an **Auction** starting there.
+- Both → an **Auction with Buy It Now**.
+- Neither → Fixed Price at the **Value Estimate** (or the first number in the Price Guide/Range) — same fallback the Discogs lister uses when there's no typed Discogs List Price. Either way, every price is shown for your approval before anything is created.
+
+The columns ride along when a row moves to Sold, so your sold records keep their listing prices.
+
+**Listing supplements.** The For Sale tab also has **eBay Listing Supplement** and **Discogs Listing Supplement** columns: type your standard boilerplate (shipping terms, grading notes, returns) down the column's cells — a blank cell makes a paragraph break — and it's appended automatically to **every** eBay draft description and every Discogs listing's comments (trimmed to fit Discogs' length limit). Write it once, and every listing carries it.
 
 ## 4. Day-to-day workflow
 
@@ -189,8 +205,8 @@ Prices prefill from **Value Estimate** (or the first number in the Price Guide/R
 ## 5. Good to know
 
 - **Custom menus need a desktop browser.** The Sheets app on iPad/iPhone/Android can't show script menus — on a tablet, open the sheet in the browser with "Request Desktop Website". (The **collection webpage** works everywhere, though.)
-- **The app updates itself** (it may take one extra app-launch to pick up a new version). **Sheet script updates are pasted**: Extensions → Apps Script → select all → paste the new version → save → reload the sheet. New versions are announced by pnicol66.
+- **The app updates itself** (it may take one extra app-launch to pick up a new version). **Sheet script updates take two steps**: (1) Extensions → Apps Script → select all → paste the new version → save → reload the sheet; (2) run **Vinyl Curator → Update my sheet (after a script update)** so any new columns are added to your tabs. Your data, keys, and folder links all survive. New versions are announced by pnicol66.
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v1.5 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v1.6 · © 2026 pnicol66*
