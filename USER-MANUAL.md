@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 1.7 · 14 August 2026**
+**Version 1.8 · 14 August 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
@@ -8,6 +8,7 @@ Contact: pnicol66@gmail.com · Personal use by permission; please don't redistri
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.8 | 2026-08-14 | New optional **Side 1–4 Vinyl** checklist entries (numbers 22–25): a full-disc surface shot per side, cropped as a circle, appearing right after each side's Label entry. The sheet gains matching **Side N Vinyl** photo columns directly right of each Side N Label column (**Update my sheet** adds them). Album-page galleries and eBay photo exports order them beside their side's label photo. |
 | 1.7 | 2026-08-14 | Sales polish: **Discogs listing comments are now compact** — grades and matrix/runout only, and the Discogs Listing Supplement is no longer auto-appended (eBay descriptions keep theirs). **eBay titles** flag verified first pressings ("1st Press") and order the extras 1st Press → cat# → year → label → mono/stereo → grade. **Collection webpage**: Value Estimate and the sales columns join the default fields, prices show $ signs, and web addresses in cells are tappable links. |
 | 1.6 | 2026-08-12 | **Matrix/Runout rework**, app and sheet: checklist entries renamed Side N Matrix/Runout with up to **4 optional photos per side**, "Dead Wax Other" merged in (numbers 15/17/19/21 retired); sheet columns renamed **Matrix/Runout A–D** with 16 photo columns that appear as photos arrive; one-time Drive merge for older albums. New **Label Variant Hierarchy** research column. Sales upgrades: **asking-price columns** (eBay Start / Buy Now, Discogs List Price) choose Fixed Price vs Auction drafts, and **Listing Supplement** columns append your boilerplate to every listing. Pickers now hide already-processed albums. Slimmer menus with a single **Update my sheet** item for migrations. App: camera **Focus** controls, the **📁 Uploaded albums** archive with re-import from Drive, multiple upload folders in Settings. |
 | 1.5 | 2026-08-07 | Eight new **detail columns** (Format → Country Of Origin) filled by AI research, which now also writes **Label Notes** (label provenance). New **Vinyl Sales** menu — Discogs draft listings and eBay draft-file export. New **collection webpage** — a private card view of the catalogue for any device. Batch research now runs ahead in the background while you review, with a live progress line. New **Kimi K3** model option. |
@@ -49,19 +50,25 @@ Entries are numbered in the order you work through them. 📷 = photo, ⌨ = typ
 | 04 | Back Cover Grade | ⌨ | |
 | 05 | Other | 📷 | optional — inserts, inner sleeve, hype sticker |
 | 06 | Side 1 Label | 📷 | cropped as a circle |
+| 22 | Side 1 Vinyl | 📷 | optional — the whole disc surface, cropped as a circle |
 | 07 | Vinyl Grade Side 1 | ⌨ | |
 | 08 | Side 2 Label | 📷 | |
+| 23 | Side 2 Vinyl | 📷 | optional |
 | 09 | Vinyl Grade Side 2 | ⌨ | |
 | 10 | Side 3 Label | 📷 | 2-disc albums only |
+| 24 | Side 3 Vinyl | 📷 | optional · 2-disc albums only |
 | 11 | Vinyl Grade Side 3 | ⌨ | 2-disc albums only |
 | 12 | Side 4 Label | 📷 | 2-disc albums only |
+| 25 | Side 4 Vinyl | 📷 | optional · 2-disc albums only |
 | 13 | Vinyl Grade Side 4 | ⌨ | 2-disc albums only |
 | 14 | Side 1 Matrix/Runout | ⌨ + 📷×4 | typed text + up to 4 optional photos |
 | 16 | Side 2 Matrix/Runout | ⌨ + 📷×4 | |
 | 18 | Side 3 Matrix/Runout | ⌨ + 📷×4 | 2-disc albums only |
 | 20 | Side 4 Matrix/Runout | ⌨ + 📷×4 | 2-disc albums only |
 
-Numbers 15/17/19/21 are retired — they belonged to the old "Dead Wax Other" entries, whose text now lives in the Matrix/Runout entry for that side. The numbering gaps are deliberate so older files in Drive keep their names.
+Numbers 15/17/19/21 are retired — they belonged to the old "Dead Wax Other" entries, whose text now lives in the Matrix/Runout entry for that side. And the **Side Vinyl** entries carry numbers 22–25 even though they sit beside their side's Label entry — new entries keep new numbers so older files in Drive never need renaming. The out-of-sequence numbering is deliberate in both cases.
+
+**Side Vinyl shots** are a photo of the record surface itself — the honest condition evidence a buyer wants next to your typed grade. Angle the disc slightly under light so scuffs and marks show truthfully; the disc edge is detected and cropped as a circle like a label shot.
 
 Files are named `Artist - Title - NN Entry Name.jpg` (photos) or `.txt` (typed entries). Matrix/Runout photos add a per-side letter and slot number (A1–A4 for side 1, B for side 2, C/D for sides 3/4), e.g.:
 
@@ -69,6 +76,7 @@ Files are named `Artist - Title - NN Entry Name.jpg` (photos) or `.txt` (typed e
     Fleetwood Mac - Rumours - 07 Vinyl Grade Side 1.txt
     Fleetwood Mac - Rumours - 14 Side 1 Matrix Runout.txt
     Fleetwood Mac - Rumours - 14 Side 1 Matrix Runout A1.jpg
+    Fleetwood Mac - Rumours - 22 Side 1 Vinyl.jpg
 
 ### Taking photos
 
@@ -155,6 +163,10 @@ Typed grades import into **Front/Back Cover Grade** and **Vinyl Grade Side 1–4
 
 The typed runout inscriptions live in **Matrix/Runout A–D** (one column per side; the old separate "Deadwax" columns were merged into them in v1.6). Each side also has four photo columns — **Matrix/Runout A Photo 1–4** and so on — where the optional close-ups from the app land. To keep the sheet tidy, a photo column stays **hidden while it's empty** and appears automatically the first time an import puts a photo in it.
 
+### Side Vinyl photo columns
+
+The optional full-disc surface shots (checklist 22–25) import into **Side 1–4 Vinyl** columns, each directly right of its **Side N Label** column. If your sheet predates v1.8, **Update my sheet** adds them; albums shot before v1.8 simply leave them blank until you re-shoot a side and re-import.
+
 ### The header row is locked
 
 Row 1's column names drive the import — the script finds columns by header text. The header row therefore carries a protection: editing it pops **"are you sure?"** first. Click through only if you genuinely mean to change a header.
@@ -210,4 +222,4 @@ The columns ride along when a row moves to Sold, so your sold records keep their
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v1.7 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v1.8 · © 2026 pnicol66*
