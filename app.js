@@ -15,19 +15,27 @@ function sanitize(s) { return s.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
 /* ---------- shot definitions ---------- */
+const VINYL_TIP = 'Center the whole disc and fill the frame — the disc edge is detected and cropped as a circle. Angle it slightly under light so surface marks show honestly.';
 const SHOTS = [
   { id: 'front',      n: 1,  name: 'Front Cover',           type: 'cover',  disc: 1 },
   { id: 'frontgrade', n: 2,  name: 'Front Cover Grade',     type: 'grade',  disc: 1 },
   { id: 'back',       n: 3,  name: 'Back Cover',            type: 'cover',  disc: 1 },
   { id: 'backgrade',  n: 4,  name: 'Back Cover Grade',      type: 'grade',  disc: 1 },
   { id: 'other',      n: 5,  name: 'Other',                 type: 'cover',  disc: 1, opt: true },
+  // "Side N Vinyl" (full-disc surface shots, optional) are numbered 22-25:
+  // display order is this array, file numbers stay stable, and no existing
+  // Drive files ever need renaming (same reasoning as the 15-21 gaps below).
   { id: 's1label',    n: 6,  name: 'Side 1 Label',          type: 'label',  disc: 1 },
+  { id: 's1vinyl',    n: 22, name: 'Side 1 Vinyl',          type: 'label',  disc: 1, opt: true, tip: VINYL_TIP },
   { id: 's1grade',    n: 7,  name: 'Vinyl Grade Side 1',    type: 'grade',  disc: 1 },
   { id: 's2label',    n: 8,  name: 'Side 2 Label',          type: 'label',  disc: 1 },
+  { id: 's2vinyl',    n: 23, name: 'Side 2 Vinyl',          type: 'label',  disc: 1, opt: true, tip: VINYL_TIP },
   { id: 's2grade',    n: 9,  name: 'Vinyl Grade Side 2',    type: 'grade',  disc: 1 },
   { id: 's3label',    n: 10, name: 'Side 3 Label',          type: 'label',  disc: 2 },
+  { id: 's3vinyl',    n: 24, name: 'Side 3 Vinyl',          type: 'label',  disc: 2, opt: true, tip: VINYL_TIP },
   { id: 's3grade',    n: 11, name: 'Vinyl Grade Side 3',    type: 'grade',  disc: 2 },
   { id: 's4label',    n: 12, name: 'Side 4 Label',          type: 'label',  disc: 2 },
+  { id: 's4vinyl',    n: 25, name: 'Side 4 Vinyl',          type: 'label',  disc: 2, opt: true, tip: VINYL_TIP },
   { id: 's4grade',    n: 13, name: 'Vinyl Grade Side 4',    type: 'grade',  disc: 2 },
   // Numbers 15/17/19/21 belonged to the removed "Dead Wax Other" entries; gaps kept so
   // existing Drive files never need renaming. fname = filename form ("/" is illegal in filenames).
@@ -246,7 +254,7 @@ async function openCamera(def, slot) {
   const label = curSlot ? `${pad2(def.n)} ${def.name} · Photo ${curSlot}` : `${pad2(def.n)} ${def.name}`;
   show('scr-camera', { title: label, back: camBack });
   $('#camLabel').textContent = curSlot ? `${pad2(def.n)} · ${def.name} · Photo ${curSlot}` : `${pad2(def.n)} · ${def.name}`;
-  $('#camTip').textContent = TIPS[def.type] || '';
+  $('#camTip').textContent = def.tip || TIPS[def.type] || '';
   $('#btnSkip').classList.toggle('hidden', !def.opt);
   $('#camFallback').classList.add('hidden');
   await startCam();
