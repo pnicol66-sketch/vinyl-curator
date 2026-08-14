@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 1.6 · 12 August 2026**
+**Version 1.7 · 14 August 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
@@ -8,6 +8,7 @@ Contact: pnicol66@gmail.com · Personal use by permission; please don't redistri
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.7 | 2026-08-14 | Sales polish: **Discogs listing comments are now compact** — grades and matrix/runout only, and the Discogs Listing Supplement is no longer auto-appended (eBay descriptions keep theirs). **eBay titles** flag verified first pressings ("1st Press") and order the extras 1st Press → cat# → year → label → mono/stereo → grade. **Collection webpage**: Value Estimate and the sales columns join the default fields, prices show $ signs, and web addresses in cells are tappable links. |
 | 1.6 | 2026-08-12 | **Matrix/Runout rework**, app and sheet: checklist entries renamed Side N Matrix/Runout with up to **4 optional photos per side**, "Dead Wax Other" merged in (numbers 15/17/19/21 retired); sheet columns renamed **Matrix/Runout A–D** with 16 photo columns that appear as photos arrive; one-time Drive merge for older albums. New **Label Variant Hierarchy** research column. Sales upgrades: **asking-price columns** (eBay Start / Buy Now, Discogs List Price) choose Fixed Price vs Auction drafts, and **Listing Supplement** columns append your boilerplate to every listing. Pickers now hide already-processed albums. Slimmer menus with a single **Update my sheet** item for migrations. App: camera **Focus** controls, the **📁 Uploaded albums** archive with re-import from Drive, multiple upload folders in Settings. |
 | 1.5 | 2026-08-07 | Eight new **detail columns** (Format → Country Of Origin) filled by AI research, which now also writes **Label Notes** (label provenance). New **Vinyl Sales** menu — Discogs draft listings and eBay draft-file export. New **collection webpage** — a private card view of the catalogue for any device. Batch research now runs ahead in the background while you review, with a live progress line. New **Kimi K3** model option. |
 | 1.4 | 2026-08-06 | New **Album Story** sheet column (right after Side 4): the album's background and history, filled in by AI pressing research. Existing sheets add it via **Vinyl Curator → Add Album Story column**. |
@@ -171,7 +172,7 @@ Row 1's column names drive the import — the script finds columns by header tex
 
 ### The collection webpage
 
-A private, live card view of your catalogue — one card per record with the fields you choose — usable from any phone or tablet browser (no desktop needed, unlike the menus). Artist and album dropdowns, free-text search, and Collection / For Sale / Sold tabs.
+A private, live card view of your catalogue — one card per record with the fields you choose — usable from any phone or tablet browser (no desktop needed, unlike the menus). Artist and album dropdowns, free-text search, and Collection / For Sale / Sold tabs. The default fields include the key pressing columns plus **Value Estimate** and the sales columns; money amounts show **$** signs, and any web address in a cell is a tappable link.
 
 One-time setup on your copy: **Vinyl Curator → Open collection webpage…** walks you through deploying it (Extensions → Apps Script → Deploy → New deployment → Web app, executing as you, access "Only me"), then paste the web-app address into **Set collection webpage address…**. After that, **Open collection webpage…** shows your link any time — bookmark it on your phone. Only you can open it; it reads the sheet live, so it's always current.
 
@@ -179,8 +180,8 @@ One-time setup on your copy: **Vinyl Curator → Open collection webpage…** wa
 
 Puts **For Sale** rows up for sale on the two big marketplaces — always as **drafts** you review and publish there:
 
-- **List albums on Discogs…** — needs your own Discogs personal access token (discogs.com → Settings → Developers → **Set Discogs token…**) and a Discogs seller account. Per album it searches Discogs (catalogue number first), you pick the exact pressing from the candidates (or paste a release link), review the suggested condition/sleeve grades, price, and comments, and it creates the listing through the Discogs API as a **draft** — publish from Discogs after checking it.
-- **Export albums to eBay draft file…** — no eBay developer account needed. Writes a Seller Hub bulk-upload CSV to the Drive folder **"Vinyl Curator eBay exports"**; upload it at eBay → Seller Hub → Reports → Uploads and it creates listing **drafts** with title, price, description, and the item specifics (artist, label, year, gradings, matrix numbers, format/genre and more) filled in — you add photos and shipping on eBay and publish from there.
+- **List albums on Discogs…** — needs your own Discogs personal access token (discogs.com → Settings → Developers → **Set Discogs token…**) and a Discogs seller account. Per album it searches Discogs (catalogue number first), you pick the exact pressing from the candidates (or paste a release link), review the suggested condition/sleeve grades and price, and it creates the listing through the Discogs API as a **draft** — publish from Discogs after checking it. The prefilled comments are deliberately **compact** — your grades plus the typed matrix/runout, e.g. `Vinyl: VG+. Cover: VG. Matrix/runout - A: MG-36137A-1` — and stay fully editable before the listing is created.
+- **Export albums to eBay draft file…** — no eBay developer account needed. Writes a Seller Hub bulk-upload CSV to the Drive folder **"Vinyl Curator eBay exports"**; upload it at eBay → Seller Hub → Reports → Uploads and it creates listing **drafts** with title, price, description, and the item specifics (artist, label, year, gradings, matrix numbers, format/genre and more) filled in — you add photos and shipping on eBay and publish from there. Titles lead with **"1st Press"** when the AI research verdict confirms one, followed by cat# → year → label → mono/stereo → grade as the 80 characters allow.
 
 Both flows record what they did and when in the **Discogs Listing** and **eBay Status** columns.
 
@@ -193,7 +194,7 @@ Both flows record what they did and when in the **Discogs Listing** and **eBay S
 
 The columns ride along when a row moves to Sold, so your sold records keep their listing prices.
 
-**Listing supplements.** The For Sale tab also has **eBay Listing Supplement** and **Discogs Listing Supplement** columns: type your standard boilerplate (shipping terms, grading notes, returns) down the column's cells — a blank cell makes a paragraph break — and it's appended automatically to **every** eBay draft description and every Discogs listing's comments (trimmed to fit Discogs' length limit). Write it once, and every listing carries it.
+**Listing supplements.** The For Sale tab also has **eBay Listing Supplement** and **Discogs Listing Supplement** columns: type your standard boilerplate (shipping terms, grading notes, returns) down the column's cells — a blank cell makes a paragraph break. The eBay supplement is appended automatically to **every** eBay draft description. Since v1.7 the Discogs supplement is **not** added automatically (Discogs caps comments at 1,000 characters, so the prefill stays compact) — paste it into the comments box on the listings where you want it.
 
 ## 4. Day-to-day workflow
 
@@ -209,4 +210,4 @@ The columns ride along when a row moves to Sold, so your sold records keep their
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v1.6 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v1.7 · © 2026 pnicol66*
