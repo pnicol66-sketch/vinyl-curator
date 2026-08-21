@@ -206,7 +206,8 @@ improvements.
 - If auto-detect misses, drag the four amber corners, drag the amber bar on any side to
   move that whole edge in or out, or drag inside the frame to shift the whole crop box.
   Tap **Auto** to retry / **Full** to keep the whole frame. **⟳** rotates the saved photo
-  in 90° steps.
+  in 90° steps. Dragging a corner, a side, or a circle's ring pops a 3× magnifier in the
+  far top corner so your fingertip isn't hiding the edge you're lining up.
 - Label shots crop as a **circle** (saved on a white square): drag inside the circle to
   move it, drag its edge to resize.
 - Matrix/Runout entries are **typed** (keyboard or 🎤 dictation) and export as `.txt`;

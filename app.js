@@ -428,12 +428,14 @@ async function snap() {
 }
 
 /* ---------- review / crop ---------- */
-let review = { bmp: null, quad: null, circle: null, shape: 'quad', rot: 0, scale: 1, dpr: 1, dragging: null };
+let review = { bmp: null, quad: null, circle: null, shape: 'quad', rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null };
 function freeReview() {
   if (review.bmp && review.bmp.close) review.bmp.close();
   review.bmp = null;
   review.quad = null;
   review.circle = null;
+  review.dragging = null;
+  review.loupe = null;
 }
 function openReview(bmp) {
   stopCam();
@@ -441,7 +443,7 @@ function openReview(bmp) {
   review = {
     bmp, quad: null, circle: null,
     shape: curShot && curShot.type === 'label' ? 'circle' : 'quad',
-    rot: 0, scale: 1, dpr: 1, dragging: null,
+    rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null,
   };
   $('#btnRotate').textContent = '⟳ 0°';
   show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
@@ -566,6 +568,75 @@ async function autoDetect() {
   }
   drawReview();
 }
+function ringPoint(c0, px, py) {
+  const d = Math.hypot(px - c0.cx, py - c0.cy) || 1;
+  return { x: c0.cx + (px - c0.cx) / d * c0.r, y: c0.cy + (py - c0.cy) / d * c0.r };
+}
+function closestOnSeg(px, py, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (!len2) return { x: a.x, y: a.y };
+  let t = ((px - a.x) * dx + (py - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return { x: a.x + dx * t, y: a.y + dy * t };
+}
+/* magnifier shown while a handle is being dragged — the fingertip covers
+   exactly the pixels you are trying to line the crop up against */
+const LOUPE_ZOOM = 3;
+function drawLoupe(ctx, canvas) {
+  const L = review.loupe;
+  if (!L) return;
+  const dpr = review.dpr;
+  const s = review.scale * dpr;
+  const R = Math.min(58 * dpr, canvas.width / 4, canvas.height / 4);
+  const pad = 10 * dpr;
+  // pin to whichever top corner is farther from the finger
+  const fx = L.x * s, fy = L.y * s;
+  const left = { x: pad + R, y: pad + R };
+  const right = { x: canvas.width - pad - R, y: pad + R };
+  const c = Math.hypot(fx - left.x, fy - left.y) > Math.hypot(fx - right.x, fy - right.y) ? left : right;
+  const k = s * LOUPE_ZOOM;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, R, 0, Math.PI * 2);
+  ctx.fillStyle = '#0d0d0d';
+  ctx.fill();
+  ctx.clip();
+  ctx.setTransform(k, 0, 0, k, c.x - L.x * k, c.y - L.y * k);
+  ctx.drawImage(review.bmp, 0, 0);
+  ctx.lineWidth = 1.5 * dpr / k;
+  ctx.strokeStyle = '#f0a832';
+  ctx.beginPath();
+  if (review.shape === 'circle' && review.circle) {
+    const c0 = review.circle;
+    ctx.arc(c0.cx, c0.cy, c0.r, 0, Math.PI * 2);
+  } else if (review.quad) {
+    const q = review.quad;
+    ctx.moveTo(q[0].x, q[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(q[i].x, q[i].y);
+    ctx.closePath();
+  }
+  ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.strokeStyle = 'rgba(255,255,255,.5)';
+  ctx.lineWidth = 1 * dpr;
+  const cross = 9 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(c.x - cross, c.y); ctx.lineTo(c.x + cross, c.y);
+  ctx.moveTo(c.x, c.y - cross); ctx.lineTo(c.x, c.y + cross);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, R, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0,0,0,.6)';
+  ctx.lineWidth = 4 * dpr;
+  ctx.stroke();
+  ctx.strokeStyle = '#f0a832';
+  ctx.lineWidth = 2 * dpr;
+  ctx.stroke();
+  ctx.restore();
+}
 function fillPill(ctx, w, h, fill) {
   const r = h / 2;
   ctx.beginPath();
@@ -614,6 +685,7 @@ function drawReview() {
       ctx.beginPath(); ctx.arc(hx * s, hy * s, 4 * review.dpr, 0, 7);
       ctx.fillStyle = '#f0a832'; ctx.fill();
     }
+    drawLoupe(ctx, canvas);
     return;
   }
   const q = review.quad;
@@ -651,6 +723,7 @@ function drawReview() {
     ctx.fillStyle = '#f0a832';
     ctx.fill();
   }
+  drawLoupe(ctx, canvas);
 }
 const rc = $('#reviewCanvas');
 rc.addEventListener('pointerdown', e => {
@@ -665,8 +738,10 @@ rc.addEventListener('pointerdown', e => {
     if (Math.abs(d - c0.r) <= tol) review.dragging = 'resize';
     else if (d < c0.r) review.dragging = 'move';
     else return;
+    review.loupe = review.dragging === 'resize' ? ringPoint(c0, px, py) : null;
     rc.setPointerCapture(e.pointerId);
     e.preventDefault();
+    drawReview();
     return;
   }
   const q = review.quad;
@@ -678,6 +753,7 @@ rc.addEventListener('pointerdown', e => {
   });
   if (bd * review.scale <= 40) {
     review.dragging = { kind: 'corner', i: best };
+    review.loupe = { x: q[best].x, y: q[best].y };
   } else {
     let ei = -1, ed = Infinity;
     for (let i = 0; i < 4; i++) {
@@ -691,12 +767,15 @@ rc.addEventListener('pointerdown', e => {
         kind: 'edge', i: ei, n: edgeNormal(q, ei),
         p0: { x: q[a].x, y: q[a].y }, p1: { x: q[b].x, y: q[b].y }, sx: px, sy: py,
       };
+      review.loupe = closestOnSeg(px, py, q[a], q[b]);
     } else if (pointInQuad(px, py, q)) {
       review.dragging = { kind: 'move', quad0: q.map(p => ({ x: p.x, y: p.y })), sx: px, sy: py };
+      review.loupe = null;
     } else return;
   }
   rc.setPointerCapture(e.pointerId);
   e.preventDefault();
+  drawReview();
 });
 rc.addEventListener('pointermove', e => {
   if (!review.dragging || !review.bmp) return;
@@ -710,17 +789,20 @@ rc.addEventListener('pointermove', e => {
     if (review.dragging === 'move') { c0.cx = px; c0.cy = py; }
     else if (review.dragging === 'resize') {
       c0.r = Math.max(24, Math.hypot(px - c0.cx, py - c0.cy));
+      review.loupe = ringPoint(c0, px, py);
     }
   } else if (review.quad) {
     const d = review.dragging;
     if (d.kind === 'corner') {
       review.quad[d.i] = { x: px, y: py };
+      review.loupe = { x: px, y: py };
     } else if (d.kind === 'edge') {
       const [a, b] = EDGES[d.i];
       const [lo, hi] = slideLimits([d.p0, d.p1], d.n);
       const t = Math.max(lo, Math.min(hi, (px - d.sx) * d.n.x + (py - d.sy) * d.n.y));
       review.quad[a] = { x: d.p0.x + d.n.x * t, y: d.p0.y + d.n.y * t };
       review.quad[b] = { x: d.p1.x + d.n.x * t, y: d.p1.y + d.n.y * t };
+      review.loupe = closestOnSeg(px, py, review.quad[a], review.quad[b]);
     } else if (d.kind === 'move') {
       const xs = d.quad0.map(p => p.x), ys = d.quad0.map(p => p.y);
       const dx = Math.max(-Math.min(...xs), Math.min(w - Math.max(...xs), px - d.sx));
@@ -730,8 +812,14 @@ rc.addEventListener('pointermove', e => {
   }
   drawReview();
 });
-rc.addEventListener('pointerup', () => { review.dragging = null; });
-rc.addEventListener('pointercancel', () => { review.dragging = null; });
+function endDrag() {
+  if (!review.dragging && !review.loupe) return;
+  review.dragging = null;
+  review.loupe = null;
+  drawReview();
+}
+rc.addEventListener('pointerup', endDrag);
+rc.addEventListener('pointercancel', endDrag);
 
 $('#btnAuto').onclick = autoDetect;
 $('#btnFull').onclick = () => {
