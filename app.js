@@ -1085,6 +1085,44 @@ async function findFolder(name, parent) {
   const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id)');
   return (r.files && r.files.length) ? r.files[0].id : null;
 }
+// Which Drive folder this album uploads into.
+//
+// This used to be findOrCreateFolder(artist_title) alone, which meant two
+// copies of the same record - an original and a reissue - resolved to the SAME
+// folder, and every shot whose filename matched was overwritten in place. That
+// destroyed a reissue's photographs on 2026-08-20.
+//
+// An album that has uploaded before carries its own folder id, so re-uploading
+// the SAME album still lands where it did last time, even if the folder has
+// since been renamed. A name match with NO stored id means a different copy of
+// the same record, and that choice belongs to the owner, not to a default.
+async function resolveAlbumFolder(album, folderName, root) {
+  if (album.driveFolderId) {
+    try {
+      const f = await drive('https://www.googleapis.com/drive/v3/files/' +
+        album.driveFolderId + '?fields=id,name,trashed');
+      if (f && f.id && !f.trashed) return { id: f.id, name: f.name };
+    } catch (e) {
+      // folder deleted or unreachable - fall through and treat as a new upload
+    }
+  }
+  const existing = await findFolder(folderName, root);
+  if (!existing) return { id: await findOrCreateFolder(folderName, root), name: folderName };
+  const sameRecord = confirm(
+    'Drive already has a folder called "' + folderName + '".\n\n' +
+    'OK = this is the SAME record. Add these photos to it - any file with the ' +
+    'same name is replaced.\n\n' +
+    'Cancel = this is a DIFFERENT copy (another pressing or variant). Upload ' +
+    'into a new folder instead, leaving the existing one untouched.');
+  if (sameRecord) return { id: existing, name: folderName };
+  for (let n = 2; n < 50; n++) {
+    const alt = folderName + ' (' + n + ')';
+    if (!(await findFolder(alt, root))) {
+      return { id: await findOrCreateFolder(alt, root), name: alt };
+    }
+  }
+  throw new Error('Could not find a free folder name for "' + folderName + '".');
+}
 async function findOrCreateFolder(name, parent) {
   const found = await findFolder(name, parent);
   if (found) return found;
@@ -1120,7 +1158,8 @@ $('#btnDrive').onclick = async () => {
     const importFolder = $('#expFolder').value || settings.driveFolder || 'Vinyl Curator';
     const root = await findOrCreateFolder(importFolder, 'root');
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
-    const folder = await findOrCreateFolder(folderName, root);
+    const album = await resolveAlbumFolder(curAlbum, folderName, root);
+    const folder = album.id;
     let n = 0;
     for (const item of exportItems) {
       n++;
@@ -1149,7 +1188,7 @@ $('#btnDrive').onclick = async () => {
         });
       }
     }
-    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${importFolder} / ${folderName}`;
+    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${importFolder} / ${album.name}`;
     curAlbum.uploaded = Date.now();
     curAlbum.driveFolderName = importFolder;
     curAlbum.driveFolderId = folder;
