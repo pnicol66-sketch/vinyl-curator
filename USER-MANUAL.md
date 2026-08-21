@@ -106,8 +106,8 @@ Recognised grades (best → worst): **M, NM (M-), EX+, EX, VG+, VG, VG-, G+, G, 
 
 From the checklist tap **Save photos** — three options:
 
-- **Share…** (recommended, zero setup): pick **Drive** in the share sheet and save into **My Drive / Vinyl Curator / Artist_Album**. The sheet imports from that folder.
-- **Upload to Google Drive** (direct, one-time setup): uploads straight into the right folder, updating files in place on re-shoots. Needs a free Google OAuth Client ID — see Settings ⚙ for the steps.
+- **Share…** (zero setup): pick **Drive** in the share sheet and choose where to save. Be aware the app has no control here — Android decides, so the files arrive **loose, with no Artist_Album folder**, in whatever folder the Drive dialog is pointing at. Every filename already carries the artist and album, so nothing is lost, but if you are sharing a folder with someone else use direct upload instead; Share… is the usual reason files never appear on their side.
+- **Upload to Google Drive** (recommended): uploads straight into the right folder, updating files in place on re-shoots. If your copy of the app came ready to go, there is nothing to set up — tap it, sign in with your own Google account, allow access. The first upload also asks whether to share that one folder, read-only, with the archive; say yes and your photos are collected automatically from then on. (If the button says "needs setup", see Settings ⚙.)
 - **Download all as ZIP**.
 
 After a successful save the app returns to the home screen, ready for the next album.
@@ -122,9 +122,31 @@ After a save, the album moves off the home screen into **📁 Uploaded albums**.
 
 ### Settings ⚙
 
-Google OAuth Client ID (for direct upload), the **Drive folders for uploads** (default `Vinyl Curator` — leave it unless you have a reason to change it; the sheet imports from the folder of the same name), photo size (1600/2400/3200 px), JPEG quality, and **Delete ALL app data** (wipes the phone's local albums, photos, and settings — exported files in Drive are untouched).
+**Share uploads with** (the address your folders are shared with — see below), an **Advanced** section holding the Google OAuth Client ID, API key and Cloud project number for anyone running their own Google project (leave these empty to use whatever the app was built with), the **Drive folders for uploads** (default `Vinyl Curator` — leave it unless you have a reason to change it; the sheet imports from the folder of the same name), photo size (1600/2400/3200 px), JPEG quality, and **Delete ALL app data** (wipes the phone's local albums, photos, and settings — exported files in Drive are untouched).
 
 You can keep **more than one upload folder** (say, one per collection): add folders to the list in Settings, tap one to make it the default, ✕ to remove it. With two or more folders set up, the save screen shows an "upload into" dropdown, and a re-upload preselects the folder the album went to last time. (On the sheet side, switching import folders is a separate setting per sheet.)
+
+#### Share uploads with
+
+Your photos are saved into a folder in **your own** Google Drive, which by default nobody else can see. Rather than leave you to arrange sharing by hand — the step most likely to go wrong, and the reason photos used to go missing — the app offers to do it. The first time you upload into a folder it asks:
+
+> Share "Vinyl Curator" with *(address)*? Your album photos are saved into this folder in your own Google Drive. Sharing it read-only lets the archive collect them automatically — otherwise they stay where only you can see them.
+
+Say yes and that **one folder** is shared, **read-only**. You stay the owner, nothing else in your Drive is touched, and you can stop sharing at any time from Drive itself. Each album folder the app creates inside it is shared automatically too, so you are never asked again.
+
+Say no and nothing is shared — the app remembers and won't ask again for that folder. Clear the address to switch sharing off entirely; change it and you'll be asked once more for the new address.
+
+#### Link… — uploading into a folder that already exists
+
+You normally don't need this — let the app make its own folder and share it, as above. Link… is for the two cases where a folder already exists: one you created by hand in Drive, and one someone else owns and shared with you.
+
+By default an upload folder is just a **name**, and the app finds or creates a folder of that name in your own My Drive. The app can only see folders it created, so in both cases it would quietly make a **second folder of the same name** and upload into that — the files are safe, but invisible to whoever you meant to share them with.
+
+**Link…** next to a folder entry fixes it. It opens Google's own folder picker (your My Drive and your **Shared with me**), and the folder you choose is the one the app uploads into from then on — its Drive id is remembered, not just its name. The entry then reads **🔗 linked to this folder in Drive**; tap **Linked** to unlink.
+
+Anything uploaded into a linked folder is automatically visible to everyone that folder is shared with — including the per-album `Artist_Album` folders the app creates inside it, which inherit the sharing.
+
+Link… needs the **API key** and **Cloud project number** in Settings as well as the Client ID, and the **Google Picker API** enabled in the same Cloud project — see the setup steps in Settings ⚙. If a linked folder is later deleted, or the owner stops sharing it with you, the next upload stops and asks you to re-link rather than inventing a new folder.
 
 ## 3. The Google Sheet
 
