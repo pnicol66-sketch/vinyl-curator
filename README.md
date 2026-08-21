@@ -2,8 +2,9 @@
 
 A camera app for archiving vinyl records on an Android phone (built for a Motorola Razr,
 works on any modern phone). It walks you through a fixed checklist of shots per album,
-auto-detects the record/sleeve outline and crops the photo (with draggable corners to
-fine-tune), names every file from the label artist + album, and saves the set to Google Drive.
+auto-detects the record/sleeve outline and crops the photo (with draggable corners and
+side handles to fine-tune), names every file from the label artist + album, and saves the
+set to Google Drive.
 
 ## The shot checklist (per album)
 
@@ -202,8 +203,10 @@ improvements.
   etched characters catch shadows; use the zoom slider to get close. If the image goes
   blurry up close, drag the **Focus** slider (left = nearest) or tap **AF** to re-run
   autofocus (both appear only on cameras that support focus control).
-- If auto-detect misses, drag the four amber corners, or tap **Auto** to retry / **Full**
-  to keep the whole frame. **⟳** rotates the saved photo in 90° steps.
+- If auto-detect misses, drag the four amber corners, drag the amber bar on any side to
+  move that whole edge in or out, or drag inside the frame to shift the whole crop box.
+  Tap **Auto** to retry / **Full** to keep the whole frame. **⟳** rotates the saved photo
+  in 90° steps.
 - Label shots crop as a **circle** (saved on a white square): drag inside the circle to
   move it, drag its edge to resize.
 - Matrix/Runout entries are **typed** (keyboard or 🎤 dictation) and export as `.txt`;

@@ -81,7 +81,7 @@ Files are named `Artist - Title - NN Entry Name.jpg` (photos) or `.txt` (typed e
 ### Taking photos
 
 - Lay the cover or disc on a **plain, contrasting background** — that is what the outline detection keys on.
-- After the shot, the app auto-detects the outline: a four-corner frame for covers/matrix, a **circle** for labels. Drag the amber corners (or the circle edge) to fine-tune; **Auto** retries detection, **Full** keeps the whole frame, **⟳** rotates in 90° steps, then **Save**.
+- After the shot, the app auto-detects the outline: a four-corner frame for covers/matrix, a **circle** for labels. To fine-tune the frame you can drag any amber **corner**, drag the amber **bar on a side** to move that whole edge (top, bottom, left or right) straight in or out, or drag **inside the frame** to slide the whole crop box. Circles drag from the middle to move and from the ring to resize. **Auto** retries detection, **Full** keeps the whole frame, **⟳** rotates in 90° steps, then **Save**.
 - For matrix/runout shots: get close, use the **🔦 torch**, and tilt the disc so the etching catches shadows. The **Zoom** and **Focus** sliders appear when the camera supports them.
 - If the picture goes blurry up close, drag the **Focus** slider (left = nearest) to focus manually, or tap **AF** to trigger an autofocus pass. Releasing the Zoom slider also re-runs autofocus.
 - If your phone doesn't offer focus control in the browser (common on iPhone), use **🖼 import** and take the close-up with the phone's own camera app instead — it will be pulled straight into the same crop/save flow.
