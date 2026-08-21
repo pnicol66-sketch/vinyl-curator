@@ -208,6 +208,9 @@ improvements.
   Tap **Auto** to retry / **Full** to keep the whole frame. **⟳** rotates the saved photo
   in 90° steps. Dragging a corner, a side, or a circle's ring pops a 3× magnifier in the
   far top corner so your fingertip isn't hiding the edge you're lining up.
+- Matrix/Runout shots crop as a **strict rectangle** — corners carry their neighbours, so
+  the frame stays square-on and the photo is never warped to straighten it. **◇ Skew**
+  (in place of Auto on those screens) releases the corners; **▭ Rect** snaps back.
 - Label shots crop as a **circle** (saved on a white square): drag inside the circle to
   move it, drag its edge to resize.
 - Matrix/Runout entries are **typed** (keyboard or 🎤 dictation) and export as `.txt`;

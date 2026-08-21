@@ -440,12 +440,18 @@ function freeReview() {
 function openReview(bmp) {
   stopCam();
   freeReview();
+  const type = curShot && curShot.type;
   review = {
     bmp, quad: null, circle: null,
-    shape: curShot && curShot.type === 'label' ? 'circle' : 'quad',
+    shape: type === 'label' ? 'circle' : type === 'matrix' ? 'rect' : 'quad',
     rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null,
   };
   $('#btnRotate').textContent = '⟳ 0°';
+  // run-outs are flat, straight crops: swap the (redundant) Auto button for the
+  // rectangle/skew toggle, so the frame can't be knocked out of square by accident
+  $('#btnAuto').classList.toggle('hidden', type === 'matrix');
+  $('#btnShape').classList.toggle('hidden', type !== 'matrix');
+  updateShapeBtn();
   show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
   layoutReview();
   autoDetect();
@@ -526,7 +532,7 @@ async function autoDetect() {
   if (curShot.type === 'matrix') {
     review.quad = fullQuad();
     drawReview();
-    toast('Full frame kept for the run-out — drag an edge or corner to crop');
+    toast('Full frame kept for the run-out — drag an edge or corner, the crop stays rectangular');
     return;
   }
   if (curShot.type === 'label') {
@@ -567,6 +573,38 @@ async function autoDetect() {
     toast('Couldn’t find the outline — drag the edges and corners to fit');
   }
   drawReview();
+}
+const MIN_CROP = 24;   // image px: a crop never collapses past this
+function updateShapeBtn() {
+  $('#btnShape').textContent = review.shape === 'rect' ? '◇ Skew' : '▭ Rect';
+}
+function quadBounds(q) {
+  const xs = q.map(p => p.x), ys = q.map(p => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+}
+/* strict rectangle: a corner carries its two neighbours, so the frame stays square-on */
+function setRectCorner(i, px, py) {
+  const q = review.quad;
+  const x0 = q[0].x, x1 = q[1].x, y0 = q[0].y, y1 = q[2].y;
+  let x, y;
+  if (i === 0)      { x = Math.min(px, x1 - MIN_CROP); y = Math.min(py, y1 - MIN_CROP); q[0] = { x, y }; q[1] = { x: x1, y }; q[3] = { x, y: y1 }; }
+  else if (i === 1) { x = Math.max(px, x0 + MIN_CROP); y = Math.min(py, y1 - MIN_CROP); q[1] = { x, y }; q[0] = { x: x0, y }; q[2] = { x, y: y1 }; }
+  else if (i === 2) { x = Math.max(px, x0 + MIN_CROP); y = Math.max(py, y0 + MIN_CROP); q[2] = { x, y }; q[1] = { x, y: y0 }; q[3] = { x: x0, y }; }
+  else              { x = Math.min(px, x1 - MIN_CROP); y = Math.max(py, y0 + MIN_CROP); q[3] = { x, y }; q[0] = { x, y: y0 }; q[2] = { x: x1, y }; }
+  return { x, y };
+}
+// how far an edge may slide along n before it closes on the opposite edge
+function oppositeLimits(q, i, ref, n) {
+  const [c, d] = EDGES[(i + 2) % 4];
+  let lo = -Infinity, hi = Infinity;
+  for (const o of [q[c], q[d]]) {
+    const so = (o.x - ref.x) * n.x + (o.y - ref.y) * n.y;
+    if (so > 0) hi = Math.min(hi, so - MIN_CROP);
+    else lo = Math.max(lo, so + MIN_CROP);
+  }
+  return [lo, hi];
 }
 function ringPoint(c0, px, py) {
   const d = Math.hypot(px - c0.cx, py - c0.cy) || 1;
@@ -794,11 +832,14 @@ rc.addEventListener('pointermove', e => {
   } else if (review.quad) {
     const d = review.dragging;
     if (d.kind === 'corner') {
-      review.quad[d.i] = { x: px, y: py };
-      review.loupe = { x: px, y: py };
+      review.loupe = review.shape === 'rect'
+        ? setRectCorner(d.i, px, py)
+        : (review.quad[d.i] = { x: px, y: py });
     } else if (d.kind === 'edge') {
       const [a, b] = EDGES[d.i];
-      const [lo, hi] = slideLimits([d.p0, d.p1], d.n);
+      const [bLo, bHi] = slideLimits([d.p0, d.p1], d.n);
+      const [oLo, oHi] = oppositeLimits(review.quad, d.i, d.p0, d.n);
+      const lo = Math.max(bLo, oLo), hi = Math.max(lo, Math.min(bHi, oHi));
       const t = Math.max(lo, Math.min(hi, (px - d.sx) * d.n.x + (py - d.sy) * d.n.y));
       review.quad[a] = { x: d.p0.x + d.n.x * t, y: d.p0.y + d.n.y * t };
       review.quad[b] = { x: d.p1.x + d.n.x * t, y: d.p1.y + d.n.y * t };
@@ -822,6 +863,19 @@ rc.addEventListener('pointerup', endDrag);
 rc.addEventListener('pointercancel', endDrag);
 
 $('#btnAuto').onclick = autoDetect;
+$('#btnShape').onclick = () => {
+  if (review.shape === 'circle' || !review.quad) return;
+  if (review.shape === 'rect') {
+    review.shape = 'quad';
+    toast('Free crop — corners move on their own, the photo is straightened on save');
+  } else {
+    review.shape = 'rect';
+    review.quad = quadBounds(review.quad);
+    toast('Rectangle crop — the frame stays square-on');
+  }
+  updateShapeBtn();
+  drawReview();
+};
 $('#btnFull').onclick = () => {
   if (review.shape === 'circle') review.circle = fullCircle();
   else review.quad = fullQuad();
