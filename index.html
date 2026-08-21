@@ -199,7 +199,14 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 .folderrow .f-pick { flex: 1; text-align: left; background: none; border: 0; padding: 13px 12px; font-size: 15px; }
 .folderrow .f-pick:active { background: var(--card2); }
 .folderrow .f-pick em { color: var(--dim); font-style: normal; font-size: 12.5px; }
+.folderrow .f-pick em.f-linked { display: block; margin-top: 3px; }
+.folderrow .f-link {
+  flex: none; border: 1px solid var(--line); border-radius: 9px; background: none;
+  color: var(--text); font-size: 13px; font-weight: 600; padding: 8px 11px; margin-right: 4px;
+}
+.folderrow .f-link:active { background: var(--card2); }
 .folderrow .f-del { border: 0; background: none; color: var(--dim); font-size: 16px; padding: 13px; }
+.lbl-opt { color: var(--dim); font-weight: 400; }
 .addrow { display: flex; gap: 8px; }
 .addrow input { flex: 1; }
 .addrow button {
@@ -375,20 +382,32 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 
 <section id="scr-settings">
   <h2 class="sect" style="margin-top:4px">Google Drive direct upload (optional)</h2>
-  <details>
-    <summary>How to set this up (one time, ~5 min)</summary>
+  <p id="builtinNote" class="hint hidden" style="margin-bottom:10px">Nothing to set up — this copy of the app already has its Google details built in. Tap <b>Upload to Google Drive</b> on the save screen, sign in with your own Google account, and allow access. Your photos stay in <b>your</b> Drive.</p>
+
+  <label class="field" for="inShareWith">Share uploads with <span class="lbl-opt">— email address</span></label>
+  <input type="email" id="inShareWith" autocomplete="off" inputmode="email" placeholder="nobody — uploads stay private">
+  <p class="hint">The first upload into a folder offers to share <b>that folder only</b>, read-only, with this address, so the archive can collect your photos without you arranging anything in Drive. You stay the owner and can stop sharing at any time from Drive. Leave it empty and nothing is ever shared.</p>
+
+  <details style="margin-top:16px">
+    <summary>Advanced: use your own Google project</summary>
+    <p style="color:var(--dim);font-size:13px">Only needed if this app came without Google details built in, or you want uploads going through a Cloud project you control. Leave every box below empty to use whatever the app ships with.</p>
     <ol>
       <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener">console.cloud.google.com</a> and create a project (any name).</li>
-      <li>APIs &amp; Services → Library → enable <b>Google Drive API</b>.</li>
-      <li>APIs &amp; Services → OAuth consent screen → External → fill in the app name and your email → add yourself as a <b>Test user</b>.</li>
-      <li>APIs &amp; Services → Credentials → Create credentials → <b>OAuth client ID</b> → type <b>Web application</b>.</li>
+      <li>APIs &amp; Services → Library → enable <b>Google Drive API</b> (and <b>Google Picker API</b> if you want <b>Link…</b>).</li>
+      <li>APIs &amp; Services → OAuth consent screen → External. The app asks only for the <b>non-sensitive</b> <code>drive.file</code> scope, so you can <b>Publish app</b> straight to production with no verification review — otherwise every user must be added by hand as a <b>Test user</b> and will see an “unverified app” warning.</li>
+      <li>Credentials → Create credentials → <b>OAuth client ID</b> → type <b>Web application</b>.</li>
       <li>Under <b>Authorized JavaScript origins</b> add the address where this app is hosted (e.g. <code>https://yourname.github.io</code>).</li>
       <li>Copy the Client ID (ends in <code>.apps.googleusercontent.com</code>) and paste it below.</li>
+      <li>For <b>Link…</b> only: Credentials → <b>API key</b>, plus the <b>project number</b> from the Cloud console Dashboard.</li>
     </ol>
-    <p style="color:var(--dim);font-size:13px">No setup needed if you use the <b>Share…</b> button instead — it sends the photos straight to the Google Drive app on the phone.</p>
+    <label class="field" for="inClientId">OAuth Client ID</label>
+    <input type="text" id="inClientId" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com">
+    <label class="field" for="inApiKey">API key <span class="lbl-opt">— only for “Link…”</span></label>
+    <input type="text" id="inApiKey" autocomplete="off" placeholder="AIza…">
+    <label class="field" for="inProjectNumber">Cloud project number <span class="lbl-opt">— only for “Link…”</span></label>
+    <input type="text" id="inProjectNumber" inputmode="numeric" autocomplete="off" placeholder="123456789012">
   </details>
-  <label class="field" for="inClientId">OAuth Client ID</label>
-  <input type="text" id="inClientId" autocomplete="off" placeholder="xxxxxxxx.apps.googleusercontent.com">
+
   <label class="field">Drive folders for uploads — tap one to make it the default</label>
   <div id="folderList"></div>
   <div class="addrow">
@@ -396,6 +415,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <button id="btnAddFolder">Add</button>
   </div>
   <p class="hint">Each upload goes to the default folder unless you pick another on the save screen. New folders are created in Drive on first upload; removing one here doesn’t touch Drive.</p>
+  <p class="hint"><b>Link…</b> is only for a folder that already exists in Drive. You normally don’t need it — let the app create its own folder and share that, above. Link… points an entry at a folder that already exists — including one someone else owns and shared with you. Use it whenever the folder was made by hand or is shared, because this app can only see folders it created itself and would otherwise build a second, private folder of the same name. Everything you upload into a linked folder is visible to whoever that folder is shared with.</p>
 
   <h2 class="sect">Photo output</h2>
   <label class="field" for="inMaxOut">Max size (long edge)</label>
