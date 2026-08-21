@@ -1202,17 +1202,26 @@ async function pickFolder() {
   const token = await getToken();
   await loadPicker();
   return new Promise(res => {
+    // DOCS, not FOLDERS, and no mimeTypes filter. Restricting the view to
+    // folders alone hid every file, so each candidate folder looked identical
+    // and empty - useless in a Drive holding eight folders whose names all
+    // begin "Vinyl Curator". You have to be able to open one and see the
+    // albums inside before you can say "yes, that one".
     const folderView = mine => {
-      const v = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+      const v = new google.picker.DocsView(google.picker.ViewId.DOCS)
         .setIncludeFolders(true)
-        .setSelectFolderEnabled(true)
-        .setMimeTypes('application/vnd.google-apps.folder');
+        .setSelectFolderEnabled(true);
+      // LIST gives each row the full width. A grid truncates long, similar
+      // names to nothing on a phone, which is exactly when this matters most.
+      if (google.picker.DocsViewMode && google.picker.DocsViewMode.LIST) {
+        v.setMode(google.picker.DocsViewMode.LIST);
+      }
       // a folder someone shares with you sits in "Shared with me", never My Drive
       if (!mine && typeof v.setOwnedByMe === 'function') { v.setOwnedByMe(false); v.setLabel('Shared with me'); }
       return v;
     };
     const picker = new google.picker.PickerBuilder()
-      .setTitle('Pick the folder albums upload into')
+      .setTitle('Open a folder to check what is in it, then select it')
       .setDeveloperKey(cred('apiKey'))
       .setAppId(cred('projectNumber'))
       .setOAuthToken(token)
