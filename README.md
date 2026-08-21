@@ -44,9 +44,48 @@ The app is a PWA — a set of static files that must be hosted at an **https** a
 On the export screen tap **Share…**, pick **Drive** in the Android share sheet, choose a
 folder, done. The photos keep their generated filenames.
 
-**B. Direct upload (one-time 5-minute setup).**
-The app can upload straight into `My Drive / Vinyl Curator / <Artist>_<Album>/`, updating
-files in place if you re-shoot. It needs a free Google OAuth Client ID:
+Note what this path *cannot* do: the app hands the files to Android and has no say in
+where they land or how they are arranged. There are no `<Artist>_<Album>` folders — every
+file drops loose into whatever folder the Drive save dialog happens to be pointing at,
+which defaults to My Drive. If you are sharing a folder with someone, this is the usual
+reason your files never show up on their side. Use **B** for that.
+
+**B. Direct upload (recommended — no setup for the person using the app).**
+The app uploads straight into `My Drive / Vinyl Curator / <Artist>_<Album>/`, updating files
+in place if you re-shoot, and offers to share that folder with the curator on the first
+upload. For someone handed a ready-made build, the whole procedure is: tap **Upload to
+Google Drive**, sign in with their own Google account, allow, accept the sharing prompt.
+Their photos stay in their own Drive; the curator gets read-only access to that one folder.
+
+### Building a copy for someone else
+
+Fill in `BUILTIN` at the top of `app.js` — once, for everyone:
+
+```js
+const BUILTIN = {
+  clientId: '…apps.googleusercontent.com',
+  apiKey: '',            // only if you want the advanced Link… picker
+  projectNumber: '',     // ditto
+  shareWith: 'you@example.com',
+};
+```
+
+An OAuth client id identifies the **app**, not the user, and is public by design in a
+browser app — it is in the page source either way. One Cloud project of yours serves every
+client; none of them ever opens the Cloud console.
+
+Publish the consent screen to **In production** rather than leaving it in Testing. The app
+requests only `drive.file`, which Google classes as a
+[non-sensitive scope](https://developers.google.com/workspace/drive/api/guides/api-specific-auth),
+so this needs [no verification review](https://support.google.com/cloud/answer/13463073).
+Left in Testing you must add each user's address as a test user by hand (100 max) and they
+meet an "unverified app" warning.
+
+Anything left blank in `BUILTIN` falls back to the Settings screen, so an unfilled build
+behaves exactly as it always did.
+
+### Setting up the Cloud project (one time, yours)
+It needs a free Google OAuth Client ID:
 
 1. console.cloud.google.com → create a project.
 2. APIs & Services → Library → enable **Google Drive API**.
@@ -57,6 +96,52 @@ files in place if you re-shoot. It needs a free Google OAuth Client ID:
 
 The app only requests the `drive.file` scope — it can only see files/folders it created,
 nothing else in your Drive.
+
+### How the sharing works
+
+`drive.file` cuts both ways. The app can only see folders **it** created — which is exactly
+why it creates its own rather than expecting one to be prepared for it. Because the folder
+is app-created, the app may also grant permission on it, so on the first upload it asks the
+person using it:
+
+> Share "Vinyl Curator" with you@example.com? … You stay the owner, nothing else in your
+> Drive is shared, and you can stop sharing at any time from Drive itself.
+
+Accepted, it POSTs a `reader` permission
+([`permissions.create` accepts `drive.file`](https://developers.google.com/workspace/drive/api/reference/rest/v3/permissions/create))
+and records the decision so it never asks about that folder again. Per-album subfolders
+inherit the sharing, so every later upload arrives without anyone touching Drive.
+
+Declining is remembered too — no nagging on every upload — and any sharing failure is
+reported but never aborts the upload. Set `shareWith` to empty and nothing is ever shared.
+
+### Advanced: uploading into a folder that already exists
+
+Only needed when someone already has a folder full of photos, or insists on a specific
+shared folder. A folder made by hand in the Drive UI, or one someone else owns and shared
+with you, is **invisible** to the app, so it would create a second folder of the same name
+and upload into that — real files in a real folder nobody else can see.
+
+**Link…** in Settings fixes that case. Next to each folder entry it opens the Google
+Picker; choosing a folder there grants the app `drive.file` access to that exact folder,
+and the app stores its Drive id and uploads there from then on. It is the only way to reach
+a folder the app did not create. (The Sheet script's `IMPORT_FOLDER` takes an id or a name
+for the same reason.)
+
+**Link…** needs two extras from the same Cloud project, in `BUILTIN` or in Settings:
+
+6. Library → also enable **Google Picker API**.
+7. Credentials → Create credentials → **API key** → paste into *API key*.
+8. The **project number** from the Cloud console Dashboard → paste into *Cloud project
+   number*. (Picker's `setAppId` requires it under `drive.file`.)
+
+Leave these blank and everything works as before, by folder name in My Drive. If a linked
+folder is later deleted or unshared the upload stops with an error asking you to re-link —
+it deliberately does not fall back to creating a folder by name, since that silent
+duplicate is the whole problem being avoided.
+
+Shared drives (Team Drives) are not supported as link targets; use a normal folder shared
+with the other account.
 
 ## The Google Sheet helper
 

@@ -84,8 +84,36 @@ async function shotsFor(albumId) {
     .getAll(IDBKeyRange.bound([albumId, ''], [albumId, '￿'])));
 }
 
+/* ---------- built-in Google credentials ----------
+ *
+ * An OAuth client id identifies THIS APP, not the person signing in, and in a
+ * browser app it is public by design - readable in the page source either way.
+ * Filling these in once, here, is what keeps a client out of the Cloud console
+ * entirely: they tap Upload, sign in with their own Google account, allow.
+ *
+ * The app asks only for drive.file, which Google classes as a NON-SENSITIVE
+ * scope, so the consent screen can be published "In production" without going
+ * through verification review. Leave the project in "Testing" instead and every
+ * client's address has to be added by hand as a test user, and they get an
+ * "unverified app" warning.
+ *
+ * Anything left empty here falls back to what the owner typed in Settings, so
+ * an unfilled build behaves exactly as it always has.
+ */
+const BUILTIN = {
+  // Cloud project "vinyl-curator-tools", consent screen published In production,
+  // authorized JavaScript origin https://pnicol66-sketch.github.io
+  clientId: '1030181614616-f75p8qdblfdko1flgv07i0mubsoc3usg.apps.googleusercontent.com',
+  apiKey: '',         // AIza...        - only for the advanced "Link..." picker
+  projectNumber: '',  // 000000000000   - only for the advanced "Link..." picker
+  shareWith: 'pnicol66@gmail.com',
+};
+
 /* ---------- settings ---------- */
-const settings = { clientId: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null };
+const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+// What the app should actually use: an explicit Settings entry always wins, so
+// one client can point a build at their own project without a separate build.
+function cred(k) { return String(settings[k] || BUILTIN[k] || '').trim(); }
 async function loadSettings() {
   const s = await dbGet('kv', 'settings');
   if (s) Object.assign(settings, s);
@@ -94,6 +122,11 @@ async function loadSettings() {
     settings.driveFolders = [settings.driveFolder || 'Vinyl Curator'];
   if (!settings.driveFolders.includes(settings.driveFolder))
     settings.driveFolder = settings.driveFolders[0];
+  // v1.5: a folder entry may be LINKED to a real Drive folder id chosen in the
+  // picker. Forget ids whose entry has since been removed from the list.
+  if (!settings.driveFolderIds || typeof settings.driveFolderIds !== 'object') settings.driveFolderIds = {};
+  for (const k of Object.keys(settings.driveFolderIds))
+    if (!settings.driveFolders.includes(k)) delete settings.driveFolderIds[k];
 }
 async function saveSettings() { await dbPut('kv', { ...settings }, 'settings'); }
 
@@ -117,7 +150,7 @@ async function goHome() {
   const all = (await dbAll('albums')).sort((a, b) => b.created - a.created);
   const albums = all.filter(a => !a.uploaded);
   const hiddenCount = all.length - albums.length;
-  $('#btnArchive').classList.toggle('hidden', !hiddenCount && !settings.clientId);
+  $('#btnArchive').classList.toggle('hidden', !hiddenCount && !cred('clientId'));
   const list = $('#albumList');
   list.innerHTML = '';
   if (!albums.length) {
@@ -915,7 +948,7 @@ async function openExport() {
     .map(i => `<div class="exportrow"><div>${esc(i.name)}</div><span>${fmtSize(i.blob.size)}</span></div>`)
     .join('');
   $('#exportStatus').textContent = '';
-  $('#btnDrive').textContent = settings.clientId
+  $('#btnDrive').textContent = cred('clientId')
     ? 'Upload to Google Drive'
     : 'Upload to Google Drive (needs setup — see Settings)';
   const sel = $('#expFolder');
@@ -923,7 +956,7 @@ async function openExport() {
     ? curAlbum.driveFolderName : settings.driveFolder;
   sel.innerHTML = settings.driveFolders
     .map(f => `<option${f === pre ? ' selected' : ''}>${esc(f)}</option>`).join('');
-  const single = settings.driveFolders.length < 2 || !settings.clientId;
+  const single = settings.driveFolders.length < 2 || !cred('clientId');
   $('#expFolderLabel').classList.toggle('hidden', single);
   sel.classList.toggle('hidden', single);
   show('scr-export', { title: 'Save photos', back: backToAlbum });
@@ -1050,12 +1083,12 @@ function loadGsi() {
   }));
 }
 async function getToken() {
-  if (!settings.clientId) throw new Error('Add your Google OAuth Client ID in Settings first (or use Share…)');
+  if (!cred('clientId')) throw new Error('Add your Google OAuth Client ID in Settings first (or use Share…)');
   if (tokenInfo.token && Date.now() < tokenInfo.exp - 60000) return tokenInfo.token;
   await loadGsi();
   return new Promise((res, rej) => {
     const tc = google.accounts.oauth2.initTokenClient({
-      client_id: settings.clientId,
+      client_id: cred('clientId'),
       scope: 'https://www.googleapis.com/auth/drive.file',
       callback: r => {
         if (r.access_token) {
@@ -1133,6 +1166,145 @@ async function findOrCreateFolder(name, parent) {
   });
   return made.id;
 }
+
+/* ---------- Google Picker: point the app at an EXISTING Drive folder ----------
+ *
+ * The app asks for the drive.file scope, which can only see files and folders
+ * the app itself created. A folder made by hand in the Drive UI - or one
+ * someone else owns and shared with you - is invisible to findFolder(), so
+ * uploading "into" it by name quietly created a SECOND folder of the same name
+ * that nobody else could see. Photos landed somewhere real and unshareable.
+ *
+ * Picking a folder in the Google Picker grants this app drive.file access to
+ * that folder, which is the only way to reach one it did not create. Same idea
+ * as IMPORT_FOLDER in the Sheet script, which takes an id or a plain name.
+ *
+ * The picker needs two more things from the same Cloud project as the Client
+ * ID: an API key, and the project NUMBER (setAppId is required under
+ * drive.file). Without them the app behaves exactly as before, by name.
+ */
+let pickerLoaded = null;
+function loadPicker() {
+  return pickerLoaded || (pickerLoaded = new Promise((res, rej) => {
+    const fail = () => { pickerLoaded = null; rej(new Error('Could not load the Google folder picker (offline?)')); };
+    const s = document.createElement('script');
+    s.src = 'https://apis.google.com/js/api.js';
+    s.onload = () => gapi.load('picker', { callback: res, onerror: fail });
+    s.onerror = fail;
+    document.head.appendChild(s);
+  }));
+}
+function pickerReady() { return !!(cred('clientId') && cred('apiKey') && cred('projectNumber')); }
+// Resolves to { id, name } for the folder chosen, or null if the owner cancels.
+async function pickFolder() {
+  if (!pickerReady())
+    throw new Error('Linking needs the API key and project number in Settings, not just the Client ID');
+  const token = await getToken();
+  await loadPicker();
+  return new Promise(res => {
+    const folderView = mine => {
+      const v = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(true)
+        .setMimeTypes('application/vnd.google-apps.folder');
+      // a folder someone shares with you sits in "Shared with me", never My Drive
+      if (!mine && typeof v.setOwnedByMe === 'function') { v.setOwnedByMe(false); v.setLabel('Shared with me'); }
+      return v;
+    };
+    const picker = new google.picker.PickerBuilder()
+      .setTitle('Pick the folder albums upload into')
+      .setDeveloperKey(cred('apiKey'))
+      .setAppId(cred('projectNumber'))
+      .setOAuthToken(token)
+      .addView(folderView(true))
+      .addView(folderView(false))
+      .setCallback(d => {
+        if (d.action === google.picker.Action.PICKED) {
+          const doc = d.docs && d.docs[0];
+          res(doc ? { id: doc.id, name: doc.name } : null);
+        } else if (d.action === google.picker.Action.CANCEL) {
+          res(null);
+        }
+      })
+      .build();
+    picker.setVisible(true);
+  });
+}
+// Where a folder entry actually uploads to: the linked Drive folder when one
+// was picked, otherwise the old find-or-create-by-name in My Drive.
+async function resolveRootFolder(name) {
+  const id = settings.driveFolderIds[name];
+  if (!id) return findOrCreateFolder(name, 'root');
+  try {
+    const f = await drive('https://www.googleapis.com/drive/v3/files/' + id + '?fields=id,trashed');
+    if (f && f.id && !f.trashed) return f.id;
+  } catch (e) {
+    // deleted, unshared, or access revoked - handled below
+  }
+  // Deliberately NOT falling back to creating "name" in My Drive: an invisible
+  // duplicate of the shared folder is the exact failure linking exists to stop.
+  throw new Error('The linked Drive folder for “' + name + '” can’t be opened — re-link it in ⚙ Settings.');
+}
+
+/* ---------- automatic sharing ----------
+ *
+ * The reason a client's photographs used to vanish was never the upload - it
+ * was the sharing. They would make a folder by hand, forget to share it, or
+ * share a DIFFERENT folder from the one the app wrote into, and the archive
+ * saw nothing. Asking a client to get Drive sharing right by hand is asking
+ * for the one step most likely to go wrong.
+ *
+ * So the app does it. A folder this app created is one it can also grant
+ * permission on under drive.file, so the first upload into a folder offers to
+ * share it, read-only, with the curator. Album subfolders inherit that, which
+ * means every future upload arrives without anybody touching Drive again.
+ *
+ * Best-effort by design: a refusal or a failure must never cost the client
+ * their upload, so this reports and returns rather than throwing.
+ */
+async function shareFolder(folderId, folderName, st) {
+  const email = cred('shareWith');
+  if (!email) return;
+  const seen = (await dbGet('kv', 'sharedFolders')) || {};
+  if (seen[folderId]) return;          // already handled, or already declined
+  try {
+    if (st) st.textContent = 'Checking folder sharing…';
+    const perms = await drive('https://www.googleapis.com/drive/v3/files/' + folderId +
+      '/permissions?fields=permissions(emailAddress)');
+    const already = (perms.permissions || [])
+      .some(p => String(p.emailAddress || '').toLowerCase() === email.toLowerCase());
+    if (!already) {
+      const ok = confirm(
+        'Share “' + folderName + '” with ' + email + '?\n\n' +
+        'Your album photos are saved into this folder in your own Google Drive. ' +
+        'Sharing it read-only lets the archive collect them automatically — ' +
+        'otherwise they stay where only you can see them.\n\n' +
+        'You stay the owner. Nothing else in your Drive is shared, and you can ' +
+        'stop sharing at any time from Drive itself.');
+      if (!ok) {
+        seen[folderId] = 'declined';
+        await dbPut('kv', seen, 'sharedFolders');
+        toast('Not shared — the folder stays private to you', 4500);
+        return;
+      }
+      await drive('https://www.googleapis.com/drive/v3/files/' + folderId +
+        '/permissions?sendNotificationEmail=true&fields=id', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'user', role: 'reader', emailAddress: email }),
+      });
+      toast('Shared “' + folderName + '” with ' + email + ' ✓', 4000);
+    }
+    seen[folderId] = Date.now();
+    await dbPut('kv', seen, 'sharedFolders');
+  } catch (e) {
+    // Commonly: the folder is one the client does not own (already linked and
+    // shared TO them), where sharing is neither possible nor needed.
+    console.error(e);
+    toast('Couldn’t set up sharing on this folder — the upload continues', 4500);
+  }
+}
+
 async function driveBlob(fileId) {
   const token = await getToken();
   const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
@@ -1143,7 +1315,7 @@ async function driveBlob(fileId) {
 }
 $('#btnDrive').onclick = async () => {
   const st = $('#exportStatus');
-  if (!settings.clientId) {
+  if (!cred('clientId')) {
     st.innerHTML = 'Direct upload needs a <b>one-time Google setup</b> — open ⚙ <b>Settings</b> (top right of the home screen) and follow the steps under “Google Drive direct upload”.<br><br>' +
       'No setup needed for <b>Share…</b> below: tap it, pick <b>Drive</b> in the share sheet, choose a folder, done.';
     toast('Not set up yet — see the note above, or use Share…', 5000);
@@ -1156,7 +1328,8 @@ $('#btnDrive').onclick = async () => {
     await getToken();
     st.textContent = 'Finding Drive folder…';
     const importFolder = $('#expFolder').value || settings.driveFolder || 'Vinyl Curator';
-    const root = await findOrCreateFolder(importFolder, 'root');
+    const root = await resolveRootFolder(importFolder);
+    await shareFolder(root, importFolder, st);
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
     const album = await resolveAlbumFolder(curAlbum, folderName, root);
     const folder = album.id;
@@ -1217,7 +1390,7 @@ async function openArchive() {
   const last = (await dbGet('kv', 'arcFolder')) || settings.driveFolder;
   sel.innerHTML = settings.driveFolders
     .map(f => `<option${f === last ? ' selected' : ''}>${esc(f)}</option>`).join('');
-  sel.classList.toggle('hidden', settings.driveFolders.length < 2 || !settings.clientId);
+  sel.classList.toggle('hidden', settings.driveFolders.length < 2 || !cred('clientId'));
   await loadArchive();
 }
 $('#arcFolder').onchange = () => loadArchive();
@@ -1246,7 +1419,7 @@ async function loadArchive() {
     };
     list.appendChild(row);
   }
-  if (!settings.clientId) {
+  if (!cred('clientId')) {
     st.textContent = 'Browsing your Drive folders here needs the one-time Google setup — see ⚙ Settings → “Google Drive direct upload”.';
     return;
   }
@@ -1254,7 +1427,9 @@ async function loadArchive() {
   await dbPut('kv', name, 'arcFolder');
   try {
     st.textContent = 'Loading from Google Drive…';
-    const root = await findFolder(name, 'root');
+    const root = settings.driveFolderIds[name]
+      ? await resolveRootFolder(name)
+      : await findFolder(name, 'root');
     if (!root) {
       st.textContent = `No “${name}” folder in Drive yet — it’s created the first time you upload an album to it.`;
       return;
@@ -1469,7 +1644,7 @@ async function openArcView(file) {
 }
 
 /* ---------- settings ---------- */
-let editFolders = [], editDefault = '';
+let editFolders = [], editDefault = '', editFolderIds = {};
 function renderFolderList() {
   const list = $('#folderList');
   list.innerHTML = '';
@@ -1477,10 +1652,14 @@ function renderFolderList() {
     const isDef = f === editDefault;
     const row = document.createElement('div');
     row.className = 'folderrow';
+    const linked = editFolderIds[f];
     row.innerHTML =
-      `<button class="f-pick">${isDef ? '●' : '○'} ${esc(f)}${isDef ? ' <em>· default</em>' : ''}</button>` +
+      `<button class="f-pick">${isDef ? '●' : '○'} ${esc(f)}${isDef ? ' <em>· default</em>' : ''}` +
+      `${linked ? '<em class="f-linked">🔗 linked to this folder in Drive</em>' : ''}</button>` +
+      `<button class="f-link">${linked ? 'Linked' : 'Link…'}</button>` +
       (editFolders.length > 1 ? '<button class="f-del" aria-label="Remove folder">✕</button>' : '');
     row.querySelector('.f-pick').onclick = () => { editDefault = f; renderFolderList(); };
+    row.querySelector('.f-link').onclick = () => linkFolder(f);
     const del = row.querySelector('.f-del');
     if (del) del.onclick = () => {
       editFolders = editFolders.filter(x => x !== f);
@@ -1488,6 +1667,47 @@ function renderFolderList() {
       renderFolderList();
     };
     list.appendChild(row);
+  }
+}
+// The picker needs live credentials and the owner may have only just typed
+// them, so take them off the form - and keep them - before opening it.
+async function syncCredsFromForm() {
+  const was = [settings.clientId, settings.apiKey, settings.projectNumber].join('|');
+  settings.clientId = $('#inClientId').value.trim();
+  settings.apiKey = $('#inApiKey').value.trim();
+  settings.projectNumber = $('#inProjectNumber').value.trim();
+  if ([settings.clientId, settings.apiKey, settings.projectNumber].join('|') === was) return;
+  tokenInfo = { token: null, exp: 0 };   // a different client id invalidates the old token
+  await saveSettings();
+}
+async function linkFolder(f) {
+  if (editFolderIds[f]) {
+    if (!confirm('“' + f + '” is linked to a folder in Drive.\n\n' +
+      'OK = unlink it. Uploads go back to a folder of this name in My Drive.\n\n' +
+      'Cancel = keep the link.')) return;
+    delete editFolderIds[f];
+    renderFolderList();
+    return;
+  }
+  try {
+    await syncCredsFromForm();
+    const picked = await pickFolder();
+    if (!picked) return;
+    // Take the folder's real Drive name so the list and Drive agree, and so the
+    // Sheet script's import-by-name keeps matching.
+    if (picked.name !== f) {
+      if (editFolders.some(x => x !== f && x.toLowerCase() === picked.name.toLowerCase()))
+        return toast('“' + picked.name + '” is already in the list');
+      editFolders = editFolders.map(x => (x === f ? picked.name : x));
+      if (editDefault === f) editDefault = picked.name;
+      delete editFolderIds[f];
+    }
+    editFolderIds[picked.name] = picked.id;
+    renderFolderList();
+    toast('Linked to “' + picked.name + '” in Drive ✓', 3600);
+  } catch (e) {
+    console.error(e);
+    toast(e.message, 5000);
   }
 }
 $('#btnAddFolder').onclick = () => {
@@ -1500,8 +1720,17 @@ $('#btnAddFolder').onclick = () => {
 };
 function openSettings() {
   $('#inClientId').value = settings.clientId;
+  $('#inApiKey').value = settings.apiKey;
+  $('#inProjectNumber').value = settings.projectNumber;
+  $('#inShareWith').value = settings.shareWith;
+  // a built-in value is shown as the placeholder, so leaving the box empty
+  // visibly means "use the one this build ships with"
+  $('#inShareWith').placeholder = BUILTIN.shareWith || 'nobody — uploads stay private';
+  $('#inClientId').placeholder = BUILTIN.clientId || 'xxxxxxxx.apps.googleusercontent.com';
+  $('#builtinNote').classList.toggle('hidden', !BUILTIN.clientId);
   editFolders = [...settings.driveFolders];
   editDefault = settings.driveFolder;
+  editFolderIds = { ...settings.driveFolderIds };
   $('#inNewFolder').value = '';
   renderFolderList();
   $('#inMaxOut').value = String(settings.maxOut);
@@ -1510,8 +1739,17 @@ function openSettings() {
 }
 $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
+  settings.apiKey = $('#inApiKey').value.trim();
+  settings.projectNumber = $('#inProjectNumber').value.trim();
+  const shareWas = cred('shareWith');
+  settings.shareWith = $('#inShareWith').value.trim();
+  // a new address has shared nothing yet, so let every folder be offered again
+  if (cred('shareWith') !== shareWas) await dbPut('kv', {}, 'sharedFolders');
   settings.driveFolders = editFolders.length ? [...editFolders] : ['Vinyl Curator'];
   settings.driveFolder = settings.driveFolders.includes(editDefault) ? editDefault : settings.driveFolders[0];
+  settings.driveFolderIds = {};
+  for (const f of settings.driveFolders)
+    if (editFolderIds[f]) settings.driveFolderIds[f] = editFolderIds[f];
   settings.maxOut = Number($('#inMaxOut').value) || 2400;
   settings.quality = Number($('#inQuality').value) || 0.92;
   await saveSettings();
