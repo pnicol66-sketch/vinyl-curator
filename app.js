@@ -101,10 +101,12 @@ async function shotsFor(albumId) {
  * an unfilled build behaves exactly as it always has.
  */
 const BUILTIN = {
-  clientId: '',       // 000000000000-xxxxxxxx.apps.googleusercontent.com
+  // Cloud project "vinyl-curator-tools", consent screen published In production,
+  // authorized JavaScript origin https://pnicol66-sketch.github.io
+  clientId: '1030181614616-f75p8qdblfdko1flgv07i0mubsoc3usg.apps.googleusercontent.com',
   apiKey: '',         // AIza...        - only for the advanced "Link..." picker
   projectNumber: '',  // 000000000000   - only for the advanced "Link..." picker
-  shareWith: '',      // upload folders are shared read-only with this address
+  shareWith: 'pnicol66@gmail.com',
 };
 
 /* ---------- settings ---------- */
