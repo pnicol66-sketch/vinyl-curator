@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'vinylcurator-v24';
+const CACHE = 'vinylcurator-v25';
 const ASSETS = ['./', './index.html', './app.js', './detect.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', e => {

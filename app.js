@@ -480,6 +480,40 @@ function fullCircle() {
   const w = review.bmp.width, h = review.bmp.height;
   return { cx: w / 2, cy: h / 2, r: Math.min(w, h) / 2 };
 }
+/* quad edges, in corner order TL,TR,BR,BL: top, right, bottom, left */
+const EDGES = [[0, 1], [1, 2], [2, 3], [3, 0]];
+function edgeMid(q, i) {
+  const [a, b] = EDGES[i];
+  return { x: (q[a].x + q[b].x) / 2, y: (q[a].y + q[b].y) / 2 };
+}
+function edgeNormal(q, i) {
+  const [a, b] = EDGES[i];
+  const dx = q[b].x - q[a].x, dy = q[b].y - q[a].y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dy / len, y: -dx / len };
+}
+function pointInQuad(x, y, q) {
+  let inside = false;
+  for (let i = 0, j = 3; i < 4; j = i++) {
+    const a = q[i], b = q[j];
+    if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+// how far the given points may slide along n before one leaves the image
+function slideLimits(pts, n) {
+  const w = review.bmp.width, h = review.bmp.height;
+  let lo = -Infinity, hi = Infinity;
+  for (const p of pts) {
+    for (const [v, c, max] of [[p.x, n.x, w], [p.y, n.y, h]]) {
+      if (Math.abs(c) < 1e-6) continue;
+      const t0 = (0 - v) / c, t1 = (max - v) / c;
+      lo = Math.max(lo, Math.min(t0, t1));
+      hi = Math.min(hi, Math.max(t0, t1));
+    }
+  }
+  return [lo, hi];
+}
 function defaultCircle() {
   const w = review.bmp.width, h = review.bmp.height;
   return { cx: w / 2, cy: h / 2, r: 0.44 * Math.min(w, h) };
@@ -490,7 +524,7 @@ async function autoDetect() {
   if (curShot.type === 'matrix') {
     review.quad = fullQuad();
     drawReview();
-    toast('Full frame kept for the run-out — drag corners to crop if you like');
+    toast('Full frame kept for the run-out — drag an edge or corner to crop');
     return;
   }
   if (curShot.type === 'label') {
@@ -525,12 +559,28 @@ async function autoDetect() {
   try { q = Detect.detect(cx.getImageData(0, 0, sw, sh)); } catch (e) { console.error(e); }
   if (q) {
     review.quad = q.map(p => ({ x: p.x / sc, y: p.y / sc }));
-    toast('Outline detected ✓ — drag corners to fine-tune');
+    toast('Outline detected ✓ — drag corners or edges to fine-tune');
   } else {
     review.quad = defaultQuad();
-    toast('Couldn’t find the outline — drag the corners to fit');
+    toast('Couldn’t find the outline — drag the edges and corners to fit');
   }
   drawReview();
+}
+function fillPill(ctx, w, h, fill) {
+  const r = h / 2;
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(-w / 2, -h / 2, w, h, r);
+  } else {
+    ctx.moveTo(-w / 2 + r, -h / 2);
+    ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+    ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+    ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+    ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+    ctx.closePath();
+  }
+  ctx.fillStyle = fill;
+  ctx.fill();
 }
 function drawReview() {
   const canvas = $('#reviewCanvas');
@@ -582,6 +632,15 @@ function drawReview() {
   ctx.strokeStyle = '#f0a832';
   ctx.lineWidth = 2 * review.dpr;
   ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const m = edgeMid(q, i), [a, b] = EDGES[i];
+    ctx.save();
+    ctx.translate(m.x * s, m.y * s);
+    ctx.rotate(Math.atan2(q[b].y - q[a].y, q[b].x - q[a].x));
+    fillPill(ctx, 34 * review.dpr, 17 * review.dpr, 'rgba(240,168,50,.35)');
+    fillPill(ctx, 26 * review.dpr, 7 * review.dpr, '#f0a832');
+    ctx.restore();
+  }
   for (const p of q) {
     ctx.beginPath();
     ctx.arc(p.x * s, p.y * s, 11 * review.dpr, 0, 7);
@@ -610,20 +669,37 @@ rc.addEventListener('pointerdown', e => {
     e.preventDefault();
     return;
   }
-  if (!review.quad) return;
+  const q = review.quad;
+  if (!q) return;
   let best = -1, bd = Infinity;
-  review.quad.forEach((p, i) => {
+  q.forEach((p, i) => {
     const d = Math.hypot(p.x - px, p.y - py);
     if (d < bd) { bd = d; best = i; }
   });
   if (bd * review.scale <= 40) {
-    review.dragging = best;
-    rc.setPointerCapture(e.pointerId);
-    e.preventDefault();
+    review.dragging = { kind: 'corner', i: best };
+  } else {
+    let ei = -1, ed = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const m = edgeMid(q, i);
+      const d = Math.hypot(m.x - px, m.y - py);
+      if (d < ed) { ed = d; ei = i; }
+    }
+    if (ed * review.scale <= 38) {
+      const [a, b] = EDGES[ei];
+      review.dragging = {
+        kind: 'edge', i: ei, n: edgeNormal(q, ei),
+        p0: { x: q[a].x, y: q[a].y }, p1: { x: q[b].x, y: q[b].y }, sx: px, sy: py,
+      };
+    } else if (pointInQuad(px, py, q)) {
+      review.dragging = { kind: 'move', quad0: q.map(p => ({ x: p.x, y: p.y })), sx: px, sy: py };
+    } else return;
   }
+  rc.setPointerCapture(e.pointerId);
+  e.preventDefault();
 });
 rc.addEventListener('pointermove', e => {
-  if (review.dragging === null || review.dragging === -1 || !review.bmp) return;
+  if (!review.dragging || !review.bmp) return;
   const r = rc.getBoundingClientRect();
   const w = review.bmp.width, h = review.bmp.height;
   const px = Math.max(0, Math.min(w, (e.clientX - r.left) / review.scale));
@@ -635,8 +711,22 @@ rc.addEventListener('pointermove', e => {
     else if (review.dragging === 'resize') {
       c0.r = Math.max(24, Math.hypot(px - c0.cx, py - c0.cy));
     }
-  } else if (typeof review.dragging === 'number' && review.quad) {
-    review.quad[review.dragging] = { x: px, y: py };
+  } else if (review.quad) {
+    const d = review.dragging;
+    if (d.kind === 'corner') {
+      review.quad[d.i] = { x: px, y: py };
+    } else if (d.kind === 'edge') {
+      const [a, b] = EDGES[d.i];
+      const [lo, hi] = slideLimits([d.p0, d.p1], d.n);
+      const t = Math.max(lo, Math.min(hi, (px - d.sx) * d.n.x + (py - d.sy) * d.n.y));
+      review.quad[a] = { x: d.p0.x + d.n.x * t, y: d.p0.y + d.n.y * t };
+      review.quad[b] = { x: d.p1.x + d.n.x * t, y: d.p1.y + d.n.y * t };
+    } else if (d.kind === 'move') {
+      const xs = d.quad0.map(p => p.x), ys = d.quad0.map(p => p.y);
+      const dx = Math.max(-Math.min(...xs), Math.min(w - Math.max(...xs), px - d.sx));
+      const dy = Math.max(-Math.min(...ys), Math.min(h - Math.max(...ys), py - d.sy));
+      review.quad = d.quad0.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    }
   }
   drawReview();
 });
