@@ -1062,12 +1062,17 @@ $('#btnTextSave').onclick = async () => {
 /* ---------- voice dictation (matrix/runout) ---------- */
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 let speech = null;
+const VOICE_SPACE = '␟';   // stands in for a spoken "space" until the joining is done
 const VOICE_MAP = {
   zero: '0', oh: '0', one: '1', two: '2', three: '3', four: '4',
   five: '5', six: '6', seven: '7', eight: '8', nine: '9',
   dash: '-', hyphen: '-', minus: '-', slash: '/', stroke: '/',
   dot: '.', period: '.', point: '.', hash: '#', pound: '#',
   star: '*', asterisk: '*', plus: '+', equals: '=',
+  // stamped shapes, common in dead wax (Monarch's triangle and friends)
+  triangle: '△', delta: '△', square: '□', box: '□',
+  circle: '○', ring: '○', diamond: '◇',
+  space: VOICE_SPACE,
 };
 function voiceToMatrix(s) {
   const words = s.trim().split(/\s+/).map(w => {
@@ -1077,6 +1082,9 @@ function voiceToMatrix(s) {
   return words.join(' ')
     .replace(/\s*([-/.#*+=])\s*/g, '$1')   // no spaces around symbols
     .replace(/\b(\w) (?=\w\b)/g, '$1')     // join runs of single characters: "B 1" -> "B1"
+    .replace(/\s*␟\s*/g, ' ')         // a spoken "space" is exactly one space
+    .replace(/ {2,}/g, ' ')
+    .trim()
     .toUpperCase();
 }
 function stopVoice() {
