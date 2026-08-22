@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260822-113900';
+const APP_VERSION = '20260822-223019';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1077,6 +1077,14 @@ const VOICE_MAP = {
   triangle: '△', delta: '△', square: '□', box: '□',
   circle: '○', ring: '○', diamond: '◇',
   space: VOICE_SPACE,
+  // NATO phonetic — the reliable way to dictate the bare letters in a code:
+  // "alpha one bravo" -> A1B. (delta is left as the triangle above, since the
+  // stamped shape is the Vinyl-specific meaning; it is the only NATO collision.)
+  alpha: 'A', bravo: 'B', charlie: 'C', echo: 'E', foxtrot: 'F',
+  golf: 'G', hotel: 'H', india: 'I', juliet: 'J', juliett: 'J', kilo: 'K',
+  lima: 'L', mike: 'M', november: 'N', oscar: 'O', papa: 'P', quebec: 'Q',
+  romeo: 'R', sierra: 'S', tango: 'T', uniform: 'U', victor: 'V',
+  whiskey: 'W', xray: 'X', 'x-ray': 'X', yankee: 'Y', zulu: 'Z',
 };
 function voiceToMatrix(s) {
   const words = s.trim().split(/\s+/).map(w => {
@@ -1091,40 +1099,79 @@ function voiceToMatrix(s) {
     .trim()
     .toUpperCase();
 }
+let voiceWant = false;    // the user wants the mic open — survives the browser's silence-timeout restarts
+let voiceBase = '';       // text already committed to the box; the live interim guess is painted on top
+let voiceLastStart = 0;   // for the runaway-restart guard below
+let voiceRestarts = 0;
+function paintVoice(interim) {
+  const ta = $('#inShotText');
+  if (!ta) return;
+  const iv = interim ? voiceToMatrix(interim) : '';
+  ta.value = voiceBase + (iv ? (voiceBase ? ' ' : '') + iv : '');
+}
+// Full teardown. Other screens call this to cancel dictation on navigation, so it must
+// be a no-op on the text box unless a session was actually running (else it would repaint
+// a freshly loaded field with stale dictation).
 function stopVoice() {
-  if (speech) { const s = speech; speech = null; try { s.stop(); } catch (e) {} }
+  const wasActive = voiceWant || !!speech;
+  voiceWant = false;
+  if (speech) { const s = speech; speech = null; s.onend = null; try { s.stop(); } catch (e) {} }
+  if (wasActive) paintVoice('');   // drop any half-heard interim guess, keep the committed text
   const b = $('#btnTextVoice');
-  b.classList.remove('listening');
-  b.textContent = '🎤 Dictate it';
+  if (b) { b.classList.remove('listening'); b.textContent = '🎤 Dictate it'; }
+}
+function startVoiceSession() {
+  const rec = new SpeechRec();
+  rec.lang = navigator.language || 'en-US';
+  rec.continuous = true;
+  rec.interimResults = true;   // live feedback, so a wrong word can be caught and re-said on the spot
+  rec.onresult = e => {
+    let fin = '', intr = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) fin += ' ' + r[0].transcript; else intr += ' ' + r[0].transcript;
+    }
+    const mf = voiceToMatrix(fin);
+    if (mf) voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf;
+    paintVoice(intr);
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      voiceWant = false;   // a permission block won't fix itself on restart
+      toast('Microphone blocked — allow mic access for this site in your browser settings', 4200);
+    } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
+      toast('Dictation error: ' + e.error, 3500);
+    }
+    // 'no-speech' / 'aborted' are the normal silence-timeout path — onend restarts us
+  };
+  rec.onend = () => {
+    if (speech !== rec) return;   // already superseded or stopped
+    speech = null;
+    if (voiceWant) restartVoice(); else stopVoice();
+  };
+  speech = rec;
+  voiceLastStart = Date.now();
+  try { rec.start(); } catch (e) { stopVoice(); }
+}
+// continuous=true is ignored on mobile Chrome/Safari — they end after a pause. Reopen the mic
+// ourselves so it keeps listening, but bail out if the engine keeps ending instantly (real fault).
+function restartVoice() {
+  const now = Date.now();
+  voiceRestarts = (now - voiceLastStart < 1200) ? voiceRestarts + 1 : 0;
+  if (voiceRestarts > 8) { toast('Dictation stopped listening', 2500); return stopVoice(); }
+  setTimeout(() => { if (voiceWant) startVoiceSession(); }, 250);
 }
 $('#btnTextVoice').onclick = () => {
-  if (speech) return stopVoice();
+  if (voiceWant || speech) return stopVoice();
   if (!SpeechRec) return;
-  speech = new SpeechRec();
-  speech.lang = navigator.language || 'en-US';
-  speech.continuous = true;
-  speech.interimResults = false;
-  speech.onresult = e => {
-    let heard = '';
-    for (let i = e.resultIndex; i < e.results.length; i++)
-      if (e.results[i].isFinal) heard += ' ' + e.results[i][0].transcript;
-    heard = voiceToMatrix(heard);
-    if (!heard) return;
-    const ta = $('#inShotText');
-    ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + heard;
-  };
-  speech.onerror = e => {
-    stopVoice();
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed')
-      toast('Microphone blocked — allow mic access for this site in your browser settings', 4200);
-    else if (e.error !== 'aborted' && e.error !== 'no-speech')
-      toast('Dictation error: ' + e.error, 3500);
-  };
-  speech.onend = () => { if (speech) stopVoice(); };  // browser ended it (silence timeout)
-  try { speech.start(); } catch (e) { return stopVoice(); }
+  const ta = $('#inShotText');
+  voiceBase = ta && ta.value.trim() ? ta.value.trim() : '';
+  voiceWant = true;
+  voiceRestarts = 0;
   const b = $('#btnTextVoice');
   b.classList.add('listening');
   b.textContent = '🎤 Listening… tap to stop';
+  startVoiceSession();
 };
 $('#btnTextDelete').onclick = async () => {
   if (!confirm('Delete this text entry?')) return;
