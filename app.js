@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260822-231814';
+const APP_VERSION = '20260822-232547';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1125,14 +1125,25 @@ function startVoiceSession() {
   rec.lang = navigator.language || 'en-US';
   rec.continuous = true;
   rec.interimResults = true;   // live feedback, so a wrong word can be caught and re-said on the spot
+  let committed = 0;           // how many results are already folded into voiceBase this session
   rec.onresult = e => {
-    let fin = '', intr = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
+    // Walk the whole list, not from e.resultIndex: in continuous mode mobile
+    // Chrome re-delivers already-final results with a stale resultIndex, which
+    // made us append the same words on every event — the runout repeating itself
+    // until you stopped. Fold each final in exactly once, keyed on our own count.
+    let intr = '';
+    for (let i = 0; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) fin += ' ' + r[0].transcript; else intr += ' ' + r[0].transcript;
+      if (r.isFinal) {
+        if (i >= committed) {
+          const mf = voiceToMatrix(r[0].transcript);
+          if (mf) voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf;
+          committed = i + 1;
+        }
+      } else {
+        intr += ' ' + r[0].transcript;
+      }
     }
-    const mf = voiceToMatrix(fin);
-    if (mf) voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf;
     paintVoice(intr);
   };
   rec.onerror = e => {
