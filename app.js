@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260822-223019';
+const APP_VERSION = '20260822-224601';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1252,114 +1252,6 @@ async function openExport() {
   sel.classList.toggle('hidden', single);
   show('scr-export', { title: 'Save photos', back: backToAlbum });
 }
-$('#btnShare').onclick = async () => {
-  const files = exportItems.map(i => new File([i.blob], i.name, { type: i.mime || 'image/jpeg' }));
-  if (navigator.canShare && navigator.canShare({ files })) {
-    try {
-      await navigator.share({ files });
-      if (confirm('Mark this album as uploaded?\n\nIt moves off the home screen into “Uploaded albums”. (You can bring it back from there.)')) {
-        curAlbum.uploaded = Date.now();
-        await dbPut('albums', curAlbum);
-        toast('Shared ✓ — moved to “Uploaded albums”');
-      } else {
-        toast('Shared ✓');
-      }
-      goHome();
-    } catch (e) {
-      if (e.name !== 'AbortError') toast('Share failed: ' + e.message);
-    }
-  } else {
-    toast('This browser can’t share files — use ZIP or Drive upload instead.');
-  }
-};
-
-/* ---------- ZIP (store method, no compression — JPEGs don't compress) ---------- */
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function crc32(u8) {
-  let c = 0xFFFFFFFF;
-  for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
-  return (c ^ 0xFFFFFFFF) >>> 0;
-}
-function makeZip(files) {
-  const enc = new TextEncoder();
-  const parts = [], central = [];
-  let offset = 0;
-  const now = new Date();
-  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
-  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
-  for (const f of files) {
-    const name = enc.encode(f.name);
-    const crc = crc32(f.data);
-    const lh = new DataView(new ArrayBuffer(30));
-    lh.setUint32(0, 0x04034b50, true);
-    lh.setUint16(4, 20, true);
-    lh.setUint16(6, 0x0800, true);
-    lh.setUint16(8, 0, true);
-    lh.setUint16(10, dosTime, true);
-    lh.setUint16(12, dosDate, true);
-    lh.setUint32(14, crc, true);
-    lh.setUint32(18, f.data.length, true);
-    lh.setUint32(22, f.data.length, true);
-    lh.setUint16(26, name.length, true);
-    lh.setUint16(28, 0, true);
-    parts.push(lh.buffer, name, f.data);
-    const ch = new DataView(new ArrayBuffer(46));
-    ch.setUint32(0, 0x02014b50, true);
-    ch.setUint16(4, 20, true);
-    ch.setUint16(6, 20, true);
-    ch.setUint16(8, 0x0800, true);
-    ch.setUint16(10, 0, true);
-    ch.setUint16(12, dosTime, true);
-    ch.setUint16(14, dosDate, true);
-    ch.setUint32(16, crc, true);
-    ch.setUint32(20, f.data.length, true);
-    ch.setUint32(24, f.data.length, true);
-    ch.setUint16(28, name.length, true);
-    ch.setUint32(42, offset, true);
-    central.push(ch.buffer, name);
-    offset += 30 + name.length + f.data.length;
-  }
-  let cdSize = 0;
-  for (const c of central) cdSize += c.byteLength;
-  const end = new DataView(new ArrayBuffer(22));
-  end.setUint32(0, 0x06054b50, true);
-  end.setUint16(8, files.length, true);
-  end.setUint16(10, files.length, true);
-  end.setUint32(12, cdSize, true);
-  end.setUint32(16, offset, true);
-  parts.push(...central, end.buffer);
-  return new Blob(parts, { type: 'application/zip' });
-}
-$('#btnZip').onclick = async () => {
-  $('#exportStatus').textContent = 'Building ZIP…';
-  try {
-    const files = [];
-    for (const i of exportItems) {
-      files.push({ name: i.name, data: new Uint8Array(await i.blob.arrayBuffer()) });
-    }
-    const blob = makeZip(files);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = sanitize(`${curAlbum.artist} - ${curAlbum.title}`) + '.zip';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    toast('ZIP downloaded — find it in your Downloads.');
-    goHome();
-  } catch (e) {
-    $('#exportStatus').textContent = '';
-    toast('ZIP failed: ' + e.message, 4000);
-  }
-};
 
 /* ---------- Google Drive upload ---------- */
 let gsiLoaded = null;
@@ -1374,7 +1266,7 @@ function loadGsi() {
   }));
 }
 async function getToken() {
-  if (!cred('clientId')) throw new Error('Add your Google OAuth Client ID in Settings first (or use Share…)');
+  if (!cred('clientId')) throw new Error('Add your Google OAuth Client ID in Settings first');
   if (tokenInfo.token && Date.now() < tokenInfo.exp - 60000) return tokenInfo.token;
   await loadGsi();
   return new Promise((res, rej) => {
@@ -1686,9 +1578,8 @@ async function driveBlob(fileId) {
 $('#btnDrive').onclick = async () => {
   const st = $('#exportStatus');
   if (!cred('clientId')) {
-    st.innerHTML = 'Direct upload needs a <b>one-time Google setup</b> — open ⚙ <b>Settings</b> (top right of the home screen) and follow the steps under “Google Drive direct upload”.<br><br>' +
-      'No setup needed for <b>Share…</b> below: tap it, pick <b>Drive</b> in the share sheet, choose a folder, done.';
-    toast('Not set up yet — see the note above, or use Share…', 5000);
+    st.innerHTML = 'Direct upload needs a <b>one-time Google setup</b> — open ⚙ <b>Settings</b> (top right of the home screen) and follow the steps under “Google Drive direct upload”.';
+    toast('Not set up yet — see the note above', 5000);
     return;
   }
   const btn = $('#btnDrive');
