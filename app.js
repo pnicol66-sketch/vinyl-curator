@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260822-230713';
+const APP_VERSION = '20260822-231814';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2109,7 +2109,10 @@ async function initServiceWorker() {
     location.reload();
   });
 
-  try { swReg = await navigator.serviceWorker.register('sw.js'); } catch (e) { return; }
+  // updateViaCache:'none' — never let the HTTP cache answer the worker-script
+  // update check, so a resume always compares against the freshest deploy.
+  try { swReg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }); }
+  catch (e) { return; }
 
   // controller check throughout: on a first-ever install there is no old
   // version to update from, and the bar would be a lie.
@@ -2122,10 +2125,18 @@ async function initServiceWorker() {
     nw.addEventListener('statechange', () => { if (nw.state === 'installed') announce(); });
   });
 
-  // A standalone app is resumed far more often than it is launched.
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && swReg) swReg.update().catch(() => {});
-  });
+  // A standalone app is resumed far more often than it is launched, so a resume
+  // is our real chance to notice a new build. Await the update check, then
+  // announce a worker that is already waiting — don't rely only on catching the
+  // updatefound event in the moment (a resume can land after it fired, or after
+  // one was left waiting while backgrounded). This is what makes the bar appear
+  // on a plain reopen, instead of only after a manual pull-to-refresh.
+  const checkForUpdate = async () => {
+    if (!swReg) return;
+    try { await swReg.update(); } catch (e) {}
+    if (swReg.waiting) announce();
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
 }
 
 async function showVersion() {
