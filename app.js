@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260822-224601';
+const APP_VERSION = '20260822-230713';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
