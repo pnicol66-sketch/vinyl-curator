@@ -27,13 +27,10 @@ shows you this reminder on first run.
 
 Either way it then opens full-screen, with its own icon, and works offline.
 
-To save photo sets to Drive, tap **Share…** on the export screen and pick
-   **Drive** — zero setup. (There's also a direct-upload mode that needs a free Google
-   OAuth Client ID; see the README if you want that later.)
-
-Shooting tip: save albums into Drive as `My Drive / Vinyl Curator / <Artist>_<Album>` —
-the Share-to-Drive flow and direct upload both do this for you. The sheet imports from
-that folder.
+To save a photo set, tap **Save photos → Upload to Google Drive** on the export screen,
+   sign in with your own Google account, and allow access. A ready-made build needs no
+   other setup. The album lands in `My Drive / Vinyl Curator / <Artist>_<Album>/`, and the
+   sheet imports from that folder.
 
 ## Part 2 — Your own copy of the sheet (5 minutes, on a computer)
 

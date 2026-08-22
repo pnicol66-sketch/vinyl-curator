@@ -41,24 +41,16 @@ The app is a PWA — a set of static files that must be hosted at an **https** a
    which the app prompts for, since Safari allows no install button.
    It then runs full-screen and works offline after the first load.
 
-## Saving to Google Drive — two ways
+## Saving to Google Drive
 
-**A. Share… button (zero setup, recommended to start).**
-On the export screen tap **Share…**, pick **Drive** in the Android share sheet, choose a
-folder, done. The photos keep their generated filenames.
-
-Note what this path *cannot* do: the app hands the files to Android and has no say in
-where they land or how they are arranged. There are no `<Artist>_<Album>` folders — every
-file drops loose into whatever folder the Drive save dialog happens to be pointing at,
-which defaults to My Drive. If you are sharing a folder with someone, this is the usual
-reason your files never show up on their side. Use **B** for that.
-
-**B. Direct upload (recommended — no setup for the person using the app).**
+**Direct upload — no setup for the person using the app.**
 The app uploads straight into `My Drive / Vinyl Curator / <Artist>_<Album>/`, updating files
 in place if you re-shoot, and offers to share that folder with the curator on the first
 upload. For someone handed a ready-made build, the whole procedure is: tap **Upload to
 Google Drive**, sign in with their own Google account, allow, accept the sharing prompt.
 Their photos stay in their own Drive; the curator gets read-only access to that one folder.
+That folder structure is what the sheet import and the archive collection rely on, so
+direct upload is the only save path — there is no loose-files share option to get wrong.
 
 ### Building a copy for someone else
 
@@ -227,8 +219,7 @@ improvements.
 ## Privacy
 
 Everything (photos, album info, settings) is stored locally in the browser's IndexedDB on
-the phone. Nothing leaves the phone except when you explicitly Share, download the ZIP, or
-upload to your own Google Drive.
+the phone. Nothing leaves the phone except when you explicitly upload to your own Google Drive.
 
 ## Local testing on a PC
 

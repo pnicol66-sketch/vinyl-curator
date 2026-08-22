@@ -106,13 +106,9 @@ Recognised grades (best → worst): **M, NM (M-), EX+, EX, VG+, VG, VG-, G+, G, 
 
 ### Exporting an album
 
-From the checklist tap **Save photos** — three options:
+From the checklist tap **Save photos**, then **Upload to Google Drive**: it uploads straight into the right `Artist – Album` folder, updating files in place on re-shoots. If your copy of the app came ready to go, there is nothing to set up — tap it, sign in with your own Google account, allow access. The first upload also asks whether to share that one folder, read-only, with the archive; say yes and your photos are collected automatically from then on. (If the button says "needs setup", see Settings ⚙.)
 
-- **Share…** (zero setup): pick **Drive** in the share sheet and choose where to save. Be aware the app has no control here — Android decides, so the files arrive **loose, with no Artist_Album folder**, in whatever folder the Drive dialog is pointing at. Every filename already carries the artist and album, so nothing is lost, but if you are sharing a folder with someone else use direct upload instead; Share… is the usual reason files never appear on their side.
-- **Upload to Google Drive** (recommended): uploads straight into the right folder, updating files in place on re-shoots. If your copy of the app came ready to go, there is nothing to set up — tap it, sign in with your own Google account, allow access. The first upload also asks whether to share that one folder, read-only, with the archive; say yes and your photos are collected automatically from then on. (If the button says "needs setup", see Settings ⚙.)
-- **Download all as ZIP**.
-
-After a successful save the app returns to the home screen, ready for the next album.
+After a successful upload the app returns to the home screen, ready for the next album.
 
 ### Uploaded albums (the 📁 archive)
 
@@ -120,7 +116,7 @@ After a save, the album moves off the home screen into **📁 Uploaded albums**.
 
 - **↩ Move back to home screen** — shown when the album's photos are still on this phone; instant.
 - **⬇ Bring back into this app** — shown when they aren't (new phone, app data wiped): downloads the album's files from Drive and rebuilds the checklist — covers, labels, grades, matrix/runout text, and deadwax photo slots all land back where they belong. Add to it, then re-upload; existing Drive files are updated in place, so the sheet import stays consistent.
-- Only albums uploaded with the app's **direct Drive upload** can be browsed and re-downloaded — albums sent via the Share sheet aren't visible to the app in Drive (Google's privacy rules), though "Move back" still works while their photos remain on the phone.
+- Albums are uploaded with the app's **direct Drive upload**, so they can be browsed in Drive and re-downloaded here later, even on a new phone.
 
 ### Settings ⚙
 
@@ -235,7 +231,7 @@ The columns ride along when a row moves to Sold, so your sold records keep their
 ## 4. Day-to-day workflow
 
 1. Shoot the album on the phone (photos + grades + matrix).
-2. Export → **Share…** → Drive.
+2. **Save photos** → **Upload to Google Drive**.
 3. In the sheet: **Vinyl Curator → Add albums to sheet…** → tick the new albums → Go.
 4. Optionally: **Vinyl Research** on the new rows, approve, done.
 
