@@ -1,9 +1,19 @@
 'use strict';
-const CACHE = 'vinylcurator-v28';
-const ASSETS = ['./', './index.html', './app.js', './detect.js', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'vinylcurator-20260822-023231';
+const ASSETS = [
+  './', './index.html', './app.js', './detect.js', './manifest.webmanifest',
+  './icon.svg', './icon-192.png', './icon-512.png', './icon-512-maskable.png',
+  './apple-touch-icon.png'
+];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // No skipWaiting here: taking over mid-session leaves the open page running
+  // the previous app.js against fresh assets. Wait until the user taps Update.
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+});
+
+self.addEventListener('message', e => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
@@ -14,8 +24,9 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Stale-while-revalidate for same-origin GETs: instant offline load,
-// updates picked up in the background.
+// Stale-while-revalidate for same-origin GETs: instant offline load — this app
+// gets used in shop basements. Staleness is handled by the update prompt, not
+// by making every launch wait on the network.
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;

@@ -1,5 +1,9 @@
 'use strict';
 
+/* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
+   always matches the service worker's cache name. Shown in Settings. */
+const APP_VERSION = '20260822-023231';
+
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -2026,6 +2030,87 @@ $('#btnInstall').onclick = () => {
   deferredPrompt = null;
   $('#btnInstall').classList.add('hidden');
 };
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  $('#btnInstall').classList.add('hidden');
+  $('#iosInstall').classList.add('hidden');
+});
+
+function isStandalone() {
+  return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+}
+
+/* iOS never fires beforeinstallprompt — Share → Add to Home Screen is the only
+   route there — so coach it instead. iPadOS reports itself as a Macintosh,
+   hence the touch-points test. */
+function isIOS() {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+async function maybeCoachIosInstall() {
+  if (!isIOS() || isStandalone()) return;
+  if (await dbGet('kv', 'iosInstallDismissed')) return;
+  $('#iosInstall').classList.remove('hidden');
+}
+$('#btnIosDismiss').onclick = async () => {
+  $('#iosInstall').classList.add('hidden');
+  await dbPut('kv', 1, 'iosInstallDismissed');
+};
+
+/* ---------- service worker + update prompt ---------- */
+/* An installed app has no address bar and no reliable way to force a reload, so
+   a new version has to announce itself. The worker waits until the user taps
+   Update; skipWaiting then triggers controllerchange, and we reload once. */
+let swReg = null;
+let updateRequested = false;
+
+$('#btnUpdate').onclick = () => {
+  $('#btnUpdate').disabled = true;
+  updateRequested = true;
+  if (swReg && swReg.waiting) swReg.waiting.postMessage('SKIP_WAITING');
+  else location.reload();
+};
+
+async function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname)) return;
+
+  // On a first-ever install the worker's clients.claim() also fires
+  // controllerchange. That is not an update, and reloading on it would make the
+  // very first visit flicker for no reason. Reload only when this page was
+  // already controlled, or when the user actually asked for the update (a
+  // deploy landing during someone's first session is otherwise missed).
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading || !(hadController || updateRequested)) return;
+    reloading = true;
+    location.reload();
+  });
+
+  try { swReg = await navigator.serviceWorker.register('sw.js'); } catch (e) { return; }
+
+  // controller check throughout: on a first-ever install there is no old
+  // version to update from, and the bar would be a lie.
+  const announce = () => { if (navigator.serviceWorker.controller) $('#updateBar').classList.remove('hidden'); };
+
+  if (swReg.waiting) announce();                    // left waiting by an earlier session
+  swReg.addEventListener('updatefound', () => {
+    const nw = swReg.installing;
+    if (!nw) return;
+    nw.addEventListener('statechange', () => { if (nw.state === 'installed') announce(); });
+  });
+
+  // A standalone app is resumed far more often than it is launched.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && swReg) swReg.update().catch(() => {});
+  });
+}
+
+async function showVersion() {
+  $('#verStamp').textContent = APP_VERSION;
+  if (isStandalone()) $('#verInstalled').textContent = ' — installed';
+}
 
 /* ---------- one-time migration: Dead Wax Other entries fold into Matrix/Runout ---------- */
 async function migrateRunout() {
@@ -2070,9 +2155,8 @@ async function migrateRunout() {
 (async function init() {
   await loadSettings();
   try { await migrateRunout(); } catch (e) { console.error('runout migration failed', e); }
-  if ('serviceWorker' in navigator &&
-      (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  initServiceWorker();
+  showVersion();
+  maybeCoachIosInstall().catch(() => {});
   goHome();
 })();
