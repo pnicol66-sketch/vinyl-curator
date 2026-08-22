@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260822-023231';
+const APP_VERSION = '20260822-113900';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1373,7 +1373,12 @@ async function findFolder(name, parent) {
 // the SAME album still lands where it did last time, even if the folder has
 // since been renamed. A name match with NO stored id means a different copy of
 // the same record, and that choice belongs to the owner, not to a default.
-async function resolveAlbumFolder(album, folderName, root) {
+//
+// The clash question defaults to the SAFE answer. OK - the button Enter
+// presses, the one a tired hand hits - now makes a new folder and touches
+// nothing. Merging two copies' photographs is the deliberate branch, and it
+// says how many files it would replace before you choose it.
+async function resolveAlbumFolder(album, folderName, root, itemNames) {
   if (album.driveFolderId) {
     try {
       const f = await drive('https://www.googleapis.com/drive/v3/files/' +
@@ -1385,13 +1390,16 @@ async function resolveAlbumFolder(album, folderName, root) {
   }
   const existing = await findFolder(folderName, root);
   if (!existing) return { id: await findOrCreateFolder(folderName, root), name: folderName };
-  const sameRecord = confirm(
+  const clashes = await countClashingFiles(existing, itemNames);
+  const newFolder = confirm(
     'Drive already has a folder called "' + folderName + '".\n\n' +
-    'OK = this is the SAME record. Add these photos to it - any file with the ' +
-    'same name is replaced.\n\n' +
-    'Cancel = this is a DIFFERENT copy (another pressing or variant). Upload ' +
-    'into a new folder instead, leaving the existing one untouched.');
-  if (sameRecord) return { id: existing, name: folderName };
+    'OK = a DIFFERENT copy (another pressing or variant). Upload into a new ' +
+    'folder and leave that one untouched.\n\n' +
+    'Cancel = the SAME record. Add these photos to the existing folder' +
+    (clashes
+      ? ', REPLACING ' + clashes + ' file' + (clashes === 1 ? '' : 's') + ' already in it.'
+      : '.'));
+  if (!newFolder) return { id: existing, name: folderName };
   for (let n = 2; n < 50; n++) {
     const alt = folderName + ' (' + n + ')';
     if (!(await findFolder(alt, root))) {
@@ -1400,6 +1408,68 @@ async function resolveAlbumFolder(album, folderName, root) {
   }
   throw new Error('Could not find a free folder name for "' + folderName + '".');
 }
+// Create or replace one file in a folder, by name. Same find-then-PATCH-or-POST
+// the photo loop always did; it lives here so the manifest goes up the same way.
+async function uploadFile(folder, name, mime, blob) {
+  const q = `name='${qEsc(name)}' and '${folder}' in parents and trashed=false`;
+  const existing = await drive('https://www.googleapis.com/drive/v3/files?q=' +
+    encodeURIComponent(q) + '&fields=files(id)');
+  if (existing.files && existing.files.length) {
+    return drive(`https://www.googleapis.com/upload/drive/v3/files/${existing.files[0].id}?uploadType=media&fields=id`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': mime },
+      body: blob,
+    });
+  }
+  const boundary = 'vinylsnap' + Date.now();
+  const body = new Blob([
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+    JSON.stringify({ name, parents: [folder] }),
+    `\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`,
+    blob,
+    `\r\n--${boundary}--`,
+  ]);
+  return drive('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+    body,
+  });
+}
+
+// The album's own record of what it is, written into its Drive folder.
+//
+// The sheet used to learn an album's artist and title by splitting the FOLDER
+// NAME at the first underscore, which made the folder name carry meaning it
+// was never safe to carry: an artist containing "_" broke it, and a "(2)"
+// added to keep two copies apart arrived in the sheet as part of the album
+// title and went out on eBay and Discogs listings that way. The manifest says
+// what the album is; the folder name goes back to being just a name.
+async function writeAlbumManifest(folder, album) {
+  const manifest = {
+    vinylCurator: 1,
+    appAlbumId: album.id,
+    artist: album.artist,
+    title: album.title,
+    discs: album.discs || 1,
+    updated: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+  await uploadFile(folder, 'album.json', 'application/json', blob);
+}
+
+// How many of these file names already exist in that folder - i.e. how many
+// photographs an "add to the existing folder" would overwrite. The owner is
+// told the number before choosing, not after.
+async function countClashingFiles(folder, names) {
+  if (!names || !names.length) return 0;
+  const q = `'${folder}' in parents and trashed=false`;
+  const r = await drive('https://www.googleapis.com/drive/v3/files?q=' +
+    encodeURIComponent(q) + '&fields=files(name)&pageSize=1000');
+  const have = {};
+  (r.files || []).forEach(f => { have[f.name] = true; });
+  return names.filter(n => have[n]).length;
+}
+
 async function findOrCreateFolder(name, parent) {
   const found = await findFolder(name, parent);
   if (found) return found;
@@ -1584,36 +1654,18 @@ $('#btnDrive').onclick = async () => {
     const root = await resolveRootFolder(importFolder);
     await shareFolder(root, importFolder, st);
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
-    const album = await resolveAlbumFolder(curAlbum, folderName, root);
+    const album = await resolveAlbumFolder(curAlbum, folderName, root,
+      exportItems.map(i => i.name));
     const folder = album.id;
     let n = 0;
     for (const item of exportItems) {
       n++;
       st.textContent = `Uploading ${n}/${exportItems.length}: ${item.name}`;
-      const q = `name='${qEsc(item.name)}' and '${folder}' in parents and trashed=false`;
-      const existing = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id)');
-      if (existing.files && existing.files.length) {
-        await drive(`https://www.googleapis.com/upload/drive/v3/files/${existing.files[0].id}?uploadType=media&fields=id`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': item.mime },
-          body: item.blob,
-        });
-      } else {
-        const boundary = 'vinylsnap' + Date.now();
-        const body = new Blob([
-          `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
-          JSON.stringify({ name: item.name, parents: [folder] }),
-          `\r\n--${boundary}\r\nContent-Type: ${item.mime}\r\n\r\n`,
-          item.blob,
-          `\r\n--${boundary}--`,
-        ]);
-        await drive('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-          method: 'POST',
-          headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
-          body,
-        });
-      }
+      await uploadFile(folder, item.name, item.mime, item.blob);
     }
+    // Last, so a manifest only ever describes a folder whose photos arrived.
+    st.textContent = 'Writing album details…';
+    await writeAlbumManifest(folder, curAlbum);
     st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${importFolder} / ${album.name}`;
     curAlbum.uploaded = Date.now();
     curAlbum.driveFolderName = importFolder;
@@ -1771,21 +1823,52 @@ function arcThumb(file, holder) {
 }
 
 /* ---------- re-import an uploaded album from Drive ---------- */
+// Artist and title for a Drive album folder. The manifest wins; the folder
+// name is the fallback for folders uploaded before the app wrote one, and its
+// trailing " (2)" is dropped - that suffix keeps two FOLDERS apart and is not
+// part of the record's title. The sheet's albumIdentityFrom_ does the same.
+function identityFromFolder(folderName, manifest) {
+  if (manifest) {
+    const a = String(manifest.artist || '').trim();
+    const t = String(manifest.title || '').trim();
+    if (a || t) return { artist: a, title: t || '(untitled)' };
+  }
+  const us = folderName.indexOf('_');
+  if (us < 1) return { artist: folderName, title: '(untitled)' };
+  return {
+    artist: folderName.slice(0, us),
+    title: folderName.slice(us + 1).replace(/\s*\(\d+\)\s*$/, '') || '(untitled)',
+  };
+}
+
 async function reimportAlbum(f) {
-  const us = f.name.indexOf('_');
-  const artist = us > 0 ? f.name.slice(0, us) : f.name;
-  const title = (us > 0 ? f.name.slice(us + 1) : '') || '(untitled)';
-  const dup = (await dbAll('albums')).find(a =>
-    a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === title.toLowerCase());
-  if (dup && !confirm(`"${artist} — ${title}" already exists on this phone. Download a second copy anyway?`)) return;
   const st = $('#arcAlbumStatus');
   const btn = $('#btnReimport');
-  btn.disabled = true;
+  // The listing and the manifest come first, because what this album is called
+  // decides what the duplicate question asks. Their own try: this runs before
+  // the download loop below, and a failed listing is not a failed download.
+  let files, manifest = null;
   try {
     const q = `'${f.id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
     const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
       '&fields=files(id,name,mimeType)&orderBy=name&pageSize=1000');
-    const files = r.files || [];
+    files = r.files || [];
+    const mf = files.find(x => x.name === 'album.json');
+    // A manifest that will not read is not an error: the folder name still answers.
+    if (mf) {
+      try { manifest = JSON.parse(await (await driveBlob(mf.id)).text()); } catch (e) { manifest = null; }
+    }
+  } catch (e) {
+    console.error(e);
+    toast('Could not read that folder: ' + e.message, 4500);
+    return;
+  }
+  const { artist, title } = identityFromFolder(f.name, manifest);
+  const dup = (await dbAll('albums')).find(a =>
+    a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === title.toLowerCase());
+  if (dup && !confirm(`"${artist} — ${title}" already exists on this phone. Download a second copy anyway?`)) return;
+  btn.disabled = true;
+  try {
     // plan which file feeds which record before downloading anything
     const jobs = [];
     for (const file of files) {
