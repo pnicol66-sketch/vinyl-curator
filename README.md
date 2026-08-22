@@ -36,8 +36,10 @@ The app is a PWA — a set of static files that must be hosted at an **https** a
    repo page works from the browser, no git needed.
 4. Repo → Settings → Pages → Source: "Deploy from a branch" → branch `main`, folder `/ (root)`.
 5. After a minute your app is live at `https://YOURNAME.github.io/vinyl-curator/`.
-6. Open that address in Chrome on the phone → menu (⋮) → **Add to Home screen**.
-   It installs like an app and works offline after the first load.
+6. Open that address on the phone and install it — Android: **Install app on this phone**
+   on the home screen (or menu ⋮ → Install app). iPhone: **Share** → **Add to Home Screen**,
+   which the app prompts for, since Safari allows no install button.
+   It then runs full-screen and works offline after the first load.
 
 ## Saving to Google Drive — two ways
 
@@ -181,7 +183,8 @@ The whole system travels with two links — see [INSTALL.md](INSTALL.md) for the
 step-by-step guide a new user can follow on their own:
 
 1. **The app**: they open https://pnicol66-sketch.github.io/vinyl-curator/ on their phone
-   and Add to Home screen. Their photos and settings stay on their phone.
+   and install it (Android: Install app; iPhone: Share → Add to Home Screen). Their photos
+   and settings stay on their phone.
 2. **The sheet**: they open the template
    (https://docs.google.com/spreadsheets/d/1yB7PvMQU4R2pLpuuX_Dr13Eob8cUR2kKNTOAKARwJcY/copy)
    and click **Make a copy** — the bound script travels with the copy, so their private
@@ -232,6 +235,26 @@ upload to your own Google Drive.
 Run `powershell -ExecutionPolicy Bypass -File serve.ps1` in this folder and open
 http://localhost:8321/ — on localhost the camera works without https (or use the 🖼 import
 button to test with existing image files).
+
+When testing an app change locally, unregister the service worker first (DevTools →
+Application → Service Workers → Unregister, and Clear storage) — otherwise the previous
+build is served from cache and your change looks like it did nothing.
+
+## Shipping an update
+
+Edit, commit, `git push` — Pages redeploys. Installed phones then show a bar
+("A new version is ready") and reload when the user taps **Update**.
+
+That relies on the service worker's cache name changing, so `bump-version.ps1` rewrites it
+— along with `APP_VERSION` in app.js, which Settings displays — on every commit that
+touches `index.html`, `app.js` or `detect.js`. The hook that runs it is in `hooks/`, and
+hooks don't survive a clone, so install it once per working copy:
+
+    cp hooks/pre-commit .git/hooks/pre-commit
+
+`make-icons.ps1` regenerates the PNG icons from `icon.svg`'s artwork (Safari ignores SVG
+manifest icons and Chrome's install prompt wants raster). Re-run it if you change the
+artwork, and update the `$art` table in it to match.
 
 ## License
 

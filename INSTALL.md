@@ -14,9 +14,20 @@ own Drive, the sheet copy is private to your Google account, and the AI runs on 
 
 ## Part 1 — The phone app (2 minutes)
 
-1. On your phone, open **https://pnicol66-sketch.github.io/vinyl-curator/** in Chrome.
-2. Menu (⋮) → **Add to Home screen**. It installs like an app and works offline afterwards.
-3. That's it. To save photo sets to Drive, tap **Share…** on the export screen and pick
+Open **https://pnicol66-sketch.github.io/vinyl-curator/** on your phone, then install it.
+Don't skip installing: run from the browser tab, iPhone clears the app's saved albums
+after about a week of not opening it, and installed apps are exempt.
+
+**Android (Chrome):** tap **Install app on this phone** on the home screen, or Menu (⋮) →
+**Install app** / **Add to Home screen**.
+
+**iPhone (Safari):** there is no install button — Apple doesn't allow one. Tap **Share**
+(the box with the up arrow, at the bottom of the screen) → **Add to Home Screen**. The app
+shows you this reminder on first run.
+
+Either way it then opens full-screen, with its own icon, and works offline.
+
+To save photo sets to Drive, tap **Share…** on the export screen and pick
    **Drive** — zero setup. (There's also a direct-upload mode that needs a free Google
    OAuth Client ID; see the README if you want that later.)
 
@@ -59,7 +70,12 @@ for what you use — typically **$0.10–0.50 and 1–4 minutes per album**.
 Your copied sheet doesn't auto-update. When the script improves, pnicol66 will send you
 the new version — paste it in (30 seconds): **Extensions → Apps Script** → select
 everything in the editor → paste the new script over it → save (💾) → reload the sheet.
-The phone app updates itself.
+
+The phone app updates itself, but it asks first: when a new version is ready a bar appears
+at the bottom saying **A new version is ready** — tap **Update** and it reloads into the
+new version. That tap is the only way to refresh an installed app on iPhone, which has no
+address bar, so take it when you see it. **Settings** shows the version you're running —
+quote it if you report a problem.
 
 ## License
 

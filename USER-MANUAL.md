@@ -32,7 +32,7 @@ Everything is private: photos stay on the phone until you export them to your ow
 
 ### Installing
 
-Open **https://pnicol66-sketch.github.io/vinyl-curator/** in Chrome on the phone → menu (⋮) → **Add to Home screen**. It works offline afterwards and updates itself automatically.
+Open **https://pnicol66-sketch.github.io/vinyl-curator/** on the phone and install it — Android: tap **Install app on this phone** (or menu ⋮ → **Install app**); iPhone: **Share** → **Add to Home Screen**, which the app reminds you to do, because Safari allows no install button. It works offline afterwards, and tells you when a new version is ready. Installing also stops iPhone clearing your saved albums after a week of not opening it.
 
 ### Creating an album
 
@@ -242,7 +242,7 @@ The columns ride along when a row moves to Sold, so your sold records keep their
 ## 5. Good to know
 
 - **Custom menus need a desktop browser.** The Sheets app on iPad/iPhone/Android can't show script menus — on a tablet, open the sheet in the browser with "Request Desktop Website". (The **collection webpage** works everywhere, though.)
-- **The app updates itself** (it may take one extra app-launch to pick up a new version). **Sheet script updates take two steps**: (1) Extensions → Apps Script → select all → paste the new version → save → reload the sheet; (2) run **Vinyl Curator → Update my sheet (after a script update)** so any new columns are added to your tabs. Your data, keys, and folder links all survive. New versions are announced by pnicol66.
+- **The app updates itself, but asks first.** When a new version is ready, a bar appears at the bottom: **A new version is ready** → tap **Update** and it reloads into it. On iPhone that tap is the only way to refresh an installed app, as there's no address bar. **Settings** shows the version you're running — quote it if you report a problem. **Sheet script updates take two steps**: (1) Extensions → Apps Script → select all → paste the new version → save → reload the sheet; (2) run **Vinyl Curator → Update my sheet (after a script update)** so any new columns are added to your tabs. Your data, keys, and folder links all survive. New versions are announced by pnicol66.
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
