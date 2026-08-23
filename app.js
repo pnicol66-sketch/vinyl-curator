@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260823-201522';
+const APP_VERSION = '20260823-221452';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1011,8 +1011,9 @@ async function openTextEntry(def, rec) {
   $('#inShotText').value = text;
   $('#btnTextDelete').classList.toggle('hidden', !(rec && rec.status === 'text'));
   stopVoice();
-  $('#btnTextVoice').classList.toggle('hidden', isGrade || !SpeechRec);
-  $('#voiceHint').classList.toggle('hidden', isGrade || !SpeechRec);
+  $('#btnTextVoice').classList.toggle('hidden', !SpeechRec);
+  $('#voiceHint').classList.toggle('hidden', !SpeechRec || isGrade);
+  $('#voiceHintGrade').classList.toggle('hidden', !SpeechRec || !isGrade);
   $('#photoSection').classList.toggle('hidden', isGrade);
   if (!isGrade) await renderSlots(def);
   show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
@@ -1099,6 +1100,28 @@ function voiceToMatrix(s) {
     .trim()
     .toUpperCase();
 }
+// Grade dictation: grades are short like VG+ / EX / VG- DEEP GROOVE. "plus" and
+// "minus" become the symbol on the preceding grade; "deep groove" (however it is
+// misheard) is written out; single spoken letters join up ("V G" -> "VG").
+function voiceToGrade(s) {
+  // Collapse "deep groove" and its common mis-hearings to one protected token
+  // first, so the letter-joining below can't chew it apart.
+  let text = s.toLowerCase().replace(/\bd(?:e{1,2}|i|ea)p[\s-]*gr[o0]+ve?s?\b/g, ' deepgroove ');
+  const words = text.trim().split(/\s+/).map(w => {
+    const key = w.replace(/[.,]+$/, '');
+    if (key === 'plus') return '+';
+    if (key === 'minus' || key === 'dash' || key === 'hyphen') return '-';
+    return w;
+  });
+  return words.join(' ')
+    .replace(/\b(\w) (?=\w\b)/g, '$1')   // "V G" -> "VG", "N M" -> "NM"
+    .replace(/\s*([+\-])/g, '$1')        // attach the symbol to the grade: "VG +" -> "VG+"
+    .replace(/ {2,}/g, ' ')
+    .trim()
+    .toUpperCase()
+    .replace(/DEEPGROOVE/g, 'DEEP GROOVE');
+}
+let voiceMap = voiceToMatrix;  // active mapper — swapped to voiceToGrade on grade screens
 let voiceWant = false;    // the user wants the mic open — survives the per-utterance restarts
 let voiceBase = '';       // text already committed to the box; the live interim guess is painted on top
 let voiceLastStart = 0;   // for the runaway-restart guard below
@@ -1107,7 +1130,7 @@ let voiceProgress = false; // did the session that just ended actually commit an
 function paintVoice(interim) {
   const ta = $('#inShotText');
   if (!ta) return;
-  const iv = interim ? voiceToMatrix(interim) : '';
+  const iv = interim ? voiceMap(interim) : '';
   ta.value = voiceBase + (iv ? (voiceBase ? ' ' : '') + iv : '');
 }
 // Full teardown. Other screens call this to cancel dictation on navigation, so it must
@@ -1138,7 +1161,7 @@ function startVoiceSession() {
       const r = e.results[i];
       if (r.isFinal) {
         if (i >= committed) {
-          const mf = voiceToMatrix(r[0].transcript);
+          const mf = voiceMap(r[0].transcript);
           if (mf) { voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf; voiceProgress = true; }
           committed = i + 1;
         }
@@ -1183,6 +1206,7 @@ function restartVoice() {
 $('#btnTextVoice').onclick = () => {
   if (voiceWant || speech) return stopVoice();
   if (!SpeechRec) return;
+  voiceMap = (curShot && curShot.type === 'grade') ? voiceToGrade : voiceToMatrix;
   const ta = $('#inShotText');
   voiceBase = ta && ta.value.trim() ? ta.value.trim() : '';
   voiceWant = true;
