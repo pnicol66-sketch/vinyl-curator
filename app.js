@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260823-221452';
+const APP_VERSION = '20260823-225122';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1155,7 +1155,15 @@ function startVoiceSession() {
   rec.continuous = false;
   rec.interimResults = true;   // live feedback, so a wrong word can be caught and re-said on the spot
   let committed = 0;           // guard against a final being re-delivered within this one session
+  // The engine has a cold-start lag; a word spoken into it is clipped. Hold the button
+  // on "Starting…" (set on tap) until the mic is actually capturing, then say "Listening"
+  // so you know exactly when to speak. onaudiostart is the precise signal; onstart and the
+  // first result are fallbacks for engines that skip it.
+  const ready = () => { if (speech === rec && voiceWant) { const b = $('#btnTextVoice'); if (b) b.textContent = '🎤 Listening… tap to stop'; } };
+  rec.onaudiostart = ready;
+  rec.onstart = ready;
   rec.onresult = e => {
+    ready();
     let intr = '';
     for (let i = 0; i < e.results.length; i++) {
       const r = e.results[i];
@@ -1213,7 +1221,7 @@ $('#btnTextVoice').onclick = () => {
   voiceRestarts = 0;
   const b = $('#btnTextVoice');
   b.classList.add('listening');
-  b.textContent = '🎤 Listening… tap to stop';
+  b.textContent = '🎤 Starting…';   // flips to "Listening…" once the mic is actually capturing
   startVoiceSession();
 };
 $('#btnTextDelete').onclick = async () => {
