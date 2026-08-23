@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'vinylcurator-20260822-232547';
+const CACHE = 'vinylcurator-20260823-201522';
 const ASSETS = [
   './', './index.html', './app.js', './detect.js', './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './icon-512-maskable.png',
