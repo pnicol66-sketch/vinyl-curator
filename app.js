@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260822-232547';
+const APP_VERSION = '20260823-201522';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1099,10 +1099,11 @@ function voiceToMatrix(s) {
     .trim()
     .toUpperCase();
 }
-let voiceWant = false;    // the user wants the mic open — survives the browser's silence-timeout restarts
+let voiceWant = false;    // the user wants the mic open — survives the per-utterance restarts
 let voiceBase = '';       // text already committed to the box; the live interim guess is painted on top
 let voiceLastStart = 0;   // for the runaway-restart guard below
 let voiceRestarts = 0;
+let voiceProgress = false; // did the session that just ended actually commit any speech?
 function paintVoice(interim) {
   const ta = $('#inShotText');
   if (!ta) return;
@@ -1123,21 +1124,22 @@ function stopVoice() {
 function startVoiceSession() {
   const rec = new SpeechRec();
   rec.lang = navigator.language || 'en-US';
-  rec.continuous = true;
+  // NOT continuous. In continuous mode mobile Chrome re-emits the whole utterance
+  // as a fresh final entry over and over, so any index rule still folded it in
+  // repeatedly — the runout duplicating as you spoke. One utterance per session
+  // means exactly one final, so there is nothing to double; restartVoice() reopens
+  // the mic after each so it still listens straight through pauses.
+  rec.continuous = false;
   rec.interimResults = true;   // live feedback, so a wrong word can be caught and re-said on the spot
-  let committed = 0;           // how many results are already folded into voiceBase this session
+  let committed = 0;           // guard against a final being re-delivered within this one session
   rec.onresult = e => {
-    // Walk the whole list, not from e.resultIndex: in continuous mode mobile
-    // Chrome re-delivers already-final results with a stale resultIndex, which
-    // made us append the same words on every event — the runout repeating itself
-    // until you stopped. Fold each final in exactly once, keyed on our own count.
     let intr = '';
     for (let i = 0; i < e.results.length; i++) {
       const r = e.results[i];
       if (r.isFinal) {
         if (i >= committed) {
           const mf = voiceToMatrix(r[0].transcript);
-          if (mf) voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf;
+          if (mf) { voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf; voiceProgress = true; }
           committed = i + 1;
         }
       } else {
@@ -1162,14 +1164,20 @@ function startVoiceSession() {
   };
   speech = rec;
   voiceLastStart = Date.now();
+  voiceProgress = false;
   try { rec.start(); } catch (e) { stopVoice(); }
 }
-// continuous=true is ignored on mobile Chrome/Safari — they end after a pause. Reopen the mic
-// ourselves so it keeps listening, but bail out if the engine keeps ending instantly (real fault).
+// A per-utterance session ends after every phrase; reopening it is what keeps the
+// mic listening through pauses. A session that recognised speech is normal — only
+// guard against a real fault: sessions ending instantly with nothing recognised.
 function restartVoice() {
-  const now = Date.now();
-  voiceRestarts = (now - voiceLastStart < 1200) ? voiceRestarts + 1 : 0;
-  if (voiceRestarts > 8) { toast('Dictation stopped listening', 2500); return stopVoice(); }
+  if (voiceProgress) {
+    voiceRestarts = 0;
+  } else {
+    const now = Date.now();
+    voiceRestarts = (now - voiceLastStart < 1200) ? voiceRestarts + 1 : 0;
+    if (voiceRestarts > 8) { toast('Dictation stopped listening', 2500); return stopVoice(); }
+  }
   setTimeout(() => { if (voiceWant) startVoiceSession(); }, 250);
 }
 $('#btnTextVoice').onclick = () => {
