@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260823-225122';
+const APP_VERSION = '20260823-225748';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1100,26 +1100,38 @@ function voiceToMatrix(s) {
     .trim()
     .toUpperCase();
 }
-// Grade dictation: grades are short like VG+ / EX / VG- DEEP GROOVE. "plus" and
-// "minus" become the symbol on the preceding grade; "deep groove" (however it is
-// misheard) is written out; single spoken letters join up ("V G" -> "VG").
+// The known grades, and the words / mis-hearings the speech engine hands back for
+// each. Grades are a tiny closed set, so we can snap to the real one — the short
+// ones are the worst: spoken "N M" comes back as "in him", "M" as "him"/"am".
+const GRADE_PHRASES = {
+  m: 'M', em: 'M', am: 'M', him: 'M', hem: 'M', aim: 'M', ham: 'M', mm: 'M', mint: 'M', mints: 'M',
+  nm: 'NM', 'n m': 'NM', 'en em': 'NM', 'in em': 'NM', 'in him': 'NM', 'in am': 'NM',
+  'an em': 'NM', 'an m': 'NM', 'and em': 'NM', 'and m': 'NM', 'in m': 'NM',
+  'near mint': 'NM', nearmint: 'NM', enem: 'NM', nem: 'NM', anam: 'NM',
+  ex: 'EX', 'e x': 'EX', eggs: 'EX', x: 'EX', excellent: 'EX',
+  vg: 'VG', 'v g': 'VG', 'vee gee': 'VG', veejay: 'VG', bg: 'VG', 'b g': 'VG', beegee: 'VG', 'very good': 'VG',
+  g: 'G', gee: 'G', jee: 'G', good: 'G',
+  f: 'F', eff: 'F', ef: 'F', fair: 'F', fare: 'F',
+  p: 'P', pee: 'P', poor: 'P', pea: 'P',
+};
+// Grade dictation: one grade from the closed set above, optionally with a +/-
+// ("plus"/"minus") and/or "deep groove". Snap the spoken grade to the real one;
+// if it isn't recognised, fall back to a plain letter cleanup so nothing is lost.
 function voiceToGrade(s) {
-  // Collapse "deep groove" and its common mis-hearings to one protected token
-  // first, so the letter-joining below can't chew it apart.
-  let text = s.toLowerCase().replace(/\bd(?:e{1,2}|i|ea)p[\s-]*gr[o0]+ve?s?\b/g, ' deepgroove ');
-  const words = text.trim().split(/\s+/).map(w => {
-    const key = w.replace(/[.,]+$/, '');
-    if (key === 'plus') return '+';
-    if (key === 'minus' || key === 'dash' || key === 'hyphen') return '-';
-    return w;
-  });
-  return words.join(' ')
-    .replace(/\b(\w) (?=\w\b)/g, '$1')   // "V G" -> "VG", "N M" -> "NM"
-    .replace(/\s*([+\-])/g, '$1')        // attach the symbol to the grade: "VG +" -> "VG+"
-    .replace(/ {2,}/g, ' ')
-    .trim()
-    .toUpperCase()
-    .replace(/DEEPGROOVE/g, 'DEEP GROOVE');
+  let t = ' ' + s.toLowerCase().replace(/[.,]/g, ' ') + ' ';
+  let deep = false;
+  t = t.replace(/\bd(?:e{1,2}|i|ea)p[\s-]*gr[o0]+ve?s?\b/g, () => { deep = true; return ' '; });
+  let mod = '';
+  if (/\bplus\b|\+/.test(t)) mod = '+';
+  else if (/\b(?:minus|dash|hyphen)\b|-/.test(t)) mod = '-';
+  t = t.replace(/\b(?:plus|minus|dash|hyphen)\b|[+\-]/g, ' ').replace(/\s+/g, ' ').trim();
+  // typeof guard: a raw lookup like GRADE_PHRASES["toString"] would hit a prototype method.
+  let base = GRADE_PHRASES[t];
+  if (typeof base !== 'string') base = GRADE_PHRASES[t.replace(/\s+/g, '')];
+  if (typeof base !== 'string') base = t.replace(/\b(\w) (?=\w\b)/g, '$1').replace(/ {2,}/g, ' ').trim().toUpperCase();
+  let out = (base + mod).trim();
+  if (deep) out = (out ? out + ' ' : '') + 'DEEP GROOVE';
+  return out;
 }
 let voiceMap = voiceToMatrix;  // active mapper — swapped to voiceToGrade on grade screens
 let voiceWant = false;    // the user wants the mic open — survives the per-utterance restarts
