@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260824-025528';
+const APP_VERSION = '20260824-025708';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1103,7 +1103,10 @@ function voiceToMatrix(s) {
     .trim()
     .toUpperCase()
     // Columbia "6-eye" pressings: "six eye" is misheard as 6I / "6 EYE" / "6 AYE". Snap it back.
-    .replace(/\b6[\s-]?(?:I|EYE|AYE)\b/g, '6-EYE');
+    .replace(/\b6[\s-]?(?:I|EYE|AYE)\b/g, '6-EYE')
+    // "FON" (Columbia pressing mark) is misheard as "IF ON" / "FAWN"; neither is a real runout word.
+    .replace(/\bIF ON\b/g, 'FON')
+    .replace(/\bFAWN\b/g, 'FON');
 }
 // The known grades, and the words / mis-hearings the speech engine hands back for
 // each. Grades are a tiny closed set, so we can snap to the real one — the short
