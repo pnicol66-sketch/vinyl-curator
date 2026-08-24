@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260823-225748';
+const APP_VERSION = '20260824-012431';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -137,6 +137,7 @@ async function saveSettings() { await dbPut('kv', { ...settings }, 'settings'); 
 /* ---------- navigation ---------- */
 let backAction = null;
 function show(id, { title = 'Vinyl Curator', back = null, gear = false } = {}) {
+  stopVoice();   // any screen change cancels an in-progress dictation
   $$('main > section').forEach(s => s.classList.toggle('active', s.id === id));
   $('#title').textContent = title;
   backAction = back;
@@ -189,6 +190,8 @@ $('#btnNew').onclick = () => {
   $('#inArtist').value = '';
   $('#inTitle').value = '';
   $('#inDiscs1').checked = true;
+  $('#btnArtistVoice').classList.toggle('hidden', !SpeechRec);
+  $('#btnTitleVoice').classList.toggle('hidden', !SpeechRec);
   show('scr-new', { title: 'New Album', back: goHome });
 };
 $('#btnCreate').onclick = async () => {
@@ -1098,7 +1101,9 @@ function voiceToMatrix(s) {
     .replace(/\s*␟\s*/g, ' ')         // a spoken "space" is exactly one space
     .replace(/ {2,}/g, ' ')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    // Columbia "6-eye" pressings: "six eye" is misheard as 6I (or "6 EYE"). Snap it back.
+    .replace(/\b6[\s-]?(?:I|EYE)\b/g, '6-EYE');
 }
 // The known grades, and the words / mis-hearings the speech engine hands back for
 // each. Grades are a tiny closed set, so we can snap to the real one — the short
@@ -1133,14 +1138,22 @@ function voiceToGrade(s) {
   if (deep) out = (out ? out + ' ' : '') + 'DEEP GROOVE';
   return out;
 }
-let voiceMap = voiceToMatrix;  // active mapper — swapped to voiceToGrade on grade screens
+// Free-text dictation (artist / album names): keep the words the engine heard,
+// just tidy the spacing and Title-Case each word so a lowercased result still reads
+// right. No symbol/letter mangling — these are names, not codes.
+function voiceToText(s) {
+  return s.replace(/\s+/g, ' ').trim().replace(/(^|\s)(\w)/g, (m, p, c) => p + c.toUpperCase());
+}
+let voiceMap = voiceToMatrix;   // active mapper — set per field when dictation starts
+let voiceFieldSel = '#inShotText';  // the input/textarea dictation fills
+let voiceBtnSel = '#btnTextVoice';  // the button whose label reflects dictation state
 let voiceWant = false;    // the user wants the mic open — survives the per-utterance restarts
 let voiceBase = '';       // text already committed to the box; the live interim guess is painted on top
 let voiceLastStart = 0;   // for the runaway-restart guard below
 let voiceRestarts = 0;
 let voiceProgress = false; // did the session that just ended actually commit any speech?
 function paintVoice(interim) {
-  const ta = $('#inShotText');
+  const ta = $(voiceFieldSel);
   if (!ta) return;
   const iv = interim ? voiceMap(interim) : '';
   ta.value = voiceBase + (iv ? (voiceBase ? ' ' : '') + iv : '');
@@ -1153,8 +1166,8 @@ function stopVoice() {
   voiceWant = false;
   if (speech) { const s = speech; speech = null; s.onend = null; try { s.stop(); } catch (e) {} }
   if (wasActive) paintVoice('');   // drop any half-heard interim guess, keep the committed text
-  const b = $('#btnTextVoice');
-  if (b) { b.classList.remove('listening'); b.textContent = '🎤 Dictate it'; }
+  const b = $(voiceBtnSel);
+  if (b) { b.classList.remove('listening'); b.textContent = b.dataset.idle || '🎤 Dictate it'; }
 }
 function startVoiceSession() {
   const rec = new SpeechRec();
@@ -1171,7 +1184,7 @@ function startVoiceSession() {
   // on "Starting…" (set on tap) until the mic is actually capturing, then say "Listening"
   // so you know exactly when to speak. onaudiostart is the precise signal; onstart and the
   // first result are fallbacks for engines that skip it.
-  const ready = () => { if (speech === rec && voiceWant) { const b = $('#btnTextVoice'); if (b) b.textContent = '🎤 Listening… tap to stop'; } };
+  const ready = () => { if (speech === rec && voiceWant) { const b = $(voiceBtnSel); if (b) b.textContent = '🎤 Listening… tap to stop'; } };
   rec.onaudiostart = ready;
   rec.onstart = ready;
   rec.onresult = e => {
@@ -1223,19 +1236,25 @@ function restartVoice() {
   }
   setTimeout(() => { if (voiceWant) startVoiceSession(); }, 250);
 }
-$('#btnTextVoice').onclick = () => {
-  if (voiceWant || speech) return stopVoice();
+function beginDictation(fieldSel, btnSel, mapper) {
+  if (voiceWant || speech) return stopVoice();   // any tap while listening = stop
   if (!SpeechRec) return;
-  voiceMap = (curShot && curShot.type === 'grade') ? voiceToGrade : voiceToMatrix;
-  const ta = $('#inShotText');
+  voiceFieldSel = fieldSel;
+  voiceBtnSel = btnSel;
+  voiceMap = mapper;
+  const ta = $(fieldSel);
   voiceBase = ta && ta.value.trim() ? ta.value.trim() : '';
   voiceWant = true;
   voiceRestarts = 0;
-  const b = $('#btnTextVoice');
+  const b = $(btnSel);
   b.classList.add('listening');
   b.textContent = '🎤 Starting…';   // flips to "Listening…" once the mic is actually capturing
   startVoiceSession();
-};
+}
+$('#btnTextVoice').onclick = () =>
+  beginDictation('#inShotText', '#btnTextVoice', (curShot && curShot.type === 'grade') ? voiceToGrade : voiceToMatrix);
+$('#btnArtistVoice').onclick = () => beginDictation('#inArtist', '#btnArtistVoice', voiceToText);
+$('#btnTitleVoice').onclick = () => beginDictation('#inTitle', '#btnTitleVoice', voiceToText);
 $('#btnTextDelete').onclick = async () => {
   if (!confirm('Delete this text entry?')) return;
   await dbDel('shots', [curAlbum.id, curShot.id]);

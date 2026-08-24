@@ -109,7 +109,7 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 .slotthumb img { width: 100%; height: 100%; object-fit: cover; }
 .slotthumb.filled { border-style: solid; }
 .slotthumb.sel { border-color: var(--accent); color: var(--accent); }
-#btnTextVoice.listening { border-color: var(--accent); color: var(--accent); animation: micpulse 1.2s ease-in-out infinite; }
+#btnTextVoice.listening, #btnArtistVoice.listening, #btnTitleVoice.listening { border-color: var(--accent); color: var(--accent); animation: micpulse 1.2s ease-in-out infinite; }
 @keyframes micpulse { 50% { background: #2a2213; } }
 /* home */
 .albumcard {
@@ -282,8 +282,10 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 <section id="scr-new">
   <label class="field" for="inArtist">Label artist name</label>
   <input type="text" id="inArtist" autocomplete="off" placeholder="e.g. Fleetwood Mac">
+  <button id="btnArtistVoice" class="secondary hidden" data-idle="🎤 Dictate" style="margin-top:8px">🎤 Dictate</button>
   <label class="field" for="inTitle">Album title</label>
   <input type="text" id="inTitle" autocomplete="off" placeholder="e.g. Rumours">
+  <button id="btnTitleVoice" class="secondary hidden" data-idle="🎤 Dictate" style="margin-top:8px">🎤 Dictate</button>
   <label class="field">Discs</label>
   <div class="radio-row">
     <label><input type="radio" name="discs" id="inDiscs1" checked><span>1 disc (sides 1–2)</span></label>
@@ -358,7 +360,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 <section id="scr-text">
   <label class="field" for="inShotText" id="inShotTextLabel">Matrix/Runout text — exactly as etched or stamped</label>
   <textarea id="inShotText" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. ST-A-681234-B-1"></textarea>
-  <button id="btnTextVoice" class="secondary hidden" style="margin-top:10px">🎤 Dictate it</button>
+  <button id="btnTextVoice" class="secondary hidden" data-idle="🎤 Dictate it" style="margin-top:10px">🎤 Dictate it</button>
   <div id="voiceHint" class="hidden">Read it out character by character — “S… T… dash… A… six… eight…”. The text updates live as you speak. Numbers and symbol words convert as you speak:<br>
     dash - · slash / · dot . · hash # · star * · plus + · equals = · triangle △ · square □ · circle ○ · diamond ◇ · space types a space.<br>
     For letters it keeps mishearing, use the phonetic alphabet — “alpha… bravo… charlie…” → A B C. It stays listening through pauses; tap again to stop, then fix anything by typing.</div>
