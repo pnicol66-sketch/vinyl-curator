@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260824-012431';
+const APP_VERSION = '20260824-025528';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1102,8 +1102,8 @@ function voiceToMatrix(s) {
     .replace(/ {2,}/g, ' ')
     .trim()
     .toUpperCase()
-    // Columbia "6-eye" pressings: "six eye" is misheard as 6I (or "6 EYE"). Snap it back.
-    .replace(/\b6[\s-]?(?:I|EYE)\b/g, '6-EYE');
+    // Columbia "6-eye" pressings: "six eye" is misheard as 6I / "6 EYE" / "6 AYE". Snap it back.
+    .replace(/\b6[\s-]?(?:I|EYE|AYE)\b/g, '6-EYE');
 }
 // The known grades, and the words / mis-hearings the speech engine hands back for
 // each. Grades are a tiny closed set, so we can snap to the real one — the short
@@ -1126,6 +1126,8 @@ function voiceToGrade(s) {
   let t = ' ' + s.toLowerCase().replace(/[.,]/g, ' ') + ' ';
   let deep = false;
   t = t.replace(/\bd(?:e{1,2}|i|ea)p[\s-]*gr[o0]+ve?s?\b/g, () => { deep = true; return ' '; });
+  // drop filler so "near mint condition" / "excellent copy" still resolve
+  t = t.replace(/\b(?:condition|copy|grade|graded|record|vinyl|disc|it's|its|looks?)\b/g, ' ');
   let mod = '';
   if (/\bplus\b|\+/.test(t)) mod = '+';
   else if (/\b(?:minus|dash|hyphen)\b|-/.test(t)) mod = '-';
@@ -1137,6 +1139,20 @@ function voiceToGrade(s) {
   let out = (base + mod).trim();
   if (deep) out = (out ? out + ' ' : '') + 'DEEP GROOVE';
   return out;
+}
+// Does a mapped string read as a real grade (optionally +/- and/or deep groove)?
+function isGradeString(s) { return /^(?:M|NM|EX|VG|G|F|P)[+-]?(?: DEEP GROOVE)?$/.test(s); }
+// Pick which of the engine's guesses to keep. Grades are a closed set, so scan the
+// alternatives and take the first that actually IS a grade — the top guess is often
+// a plain-English mishear ("excellent condition") when a lower guess nails it.
+function pickTranscript(r) {
+  if (voiceMap === voiceToGrade) {
+    for (let a = 0; a < r.length; a++) {
+      const alt = r[a] && r[a].transcript;
+      if (alt && isGradeString(voiceToGrade(alt))) return alt;
+    }
+  }
+  return r[0].transcript;
 }
 // Free-text dictation (artist / album names): keep the words the engine heard,
 // just tidy the spacing and Title-Case each word so a lowercased result still reads
@@ -1179,6 +1195,7 @@ function startVoiceSession() {
   // the mic after each so it still listens straight through pauses.
   rec.continuous = false;
   rec.interimResults = true;   // live feedback, so a wrong word can be caught and re-said on the spot
+  rec.maxAlternatives = 6;     // ask for several guesses so pickTranscript can choose the real grade
   let committed = 0;           // guard against a final being re-delivered within this one session
   // The engine has a cold-start lag; a word spoken into it is clipped. Hold the button
   // on "Starting…" (set on tap) until the mic is actually capturing, then say "Listening"
@@ -1194,7 +1211,7 @@ function startVoiceSession() {
       const r = e.results[i];
       if (r.isFinal) {
         if (i >= committed) {
-          const mf = voiceMap(r[0].transcript);
+          const mf = voiceMap(pickTranscript(r));
           if (mf) { voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf; voiceProgress = true; }
           committed = i + 1;
         }
