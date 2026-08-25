@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-163923';
+const APP_VERSION = '20260825-183818';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -480,9 +480,9 @@ function openReview(bmp) {
   freeReview();
   const type = curShot && curShot.type;
   const shape = type === 'label' ? 'circle' : type === 'matrix' ? 'rect' : 'quad';
-  // covers + LPs seed by tapping their four corners — outline auto-detect kept
-  // as the "Auto" fallback for the occasional square-on shot
-  const tapMode = shape === 'quad';
+  // covers + LPs seed by tapping the four corners; labels seed by tapping three
+  // points on the rim — outline/circle auto-detect kept as the "Auto" fallback
+  const tapMode = shape === 'quad' || shape === 'circle';
   review = {
     bmp, quad: null, circle: null, shape,
     mode: tapMode ? 'tap' : 'adjust', taps: [], tapActive: null,
@@ -493,7 +493,7 @@ function openReview(bmp) {
   // rectangle/skew toggle, so the frame can't be knocked out of square by accident
   $('#btnAuto').classList.toggle('hidden', type === 'matrix');
   $('#btnShape').classList.toggle('hidden', type !== 'matrix');
-  $('#btnUndo').classList.toggle('hidden', shape !== 'quad');
+  $('#btnUndo').classList.toggle('hidden', shape === 'rect');
   updateShapeBtn();
   show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
   layoutReview();
@@ -503,12 +503,15 @@ function enterTapMode() {
   review.mode = 'tap';
   review.taps = [];
   review.quad = null;
+  review.circle = null;
   review.tapActive = null;
   review.dragging = null;
   review.loupe = null;
   updateTapPrompt();
   drawReview();
 }
+// how many taps this shape needs to seed: 3 rim points for a circle, 4 corners for a quad
+function tapsNeeded() { return review.shape === 'circle' ? 3 : 4; }
 /* order four tapped points into TL,TR,BR,BL regardless of tap order */
 function orderQuad(pts) {
   const s = pts.slice().sort((a, b) => a.y - b.y);
@@ -516,36 +519,72 @@ function orderQuad(pts) {
   const bot = [s[2], s[3]].sort((a, b) => a.x - b.x);   // BL, BR
   return [top[0], top[1], bot[1], bot[0]];
 }
+/* the unique circle through three points (circumcircle); null if they're collinear */
+function circleFrom3(a, b, c) {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(d) < 1e-6) return null;
+  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y;
+  const cx = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
+  const cy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+  return { cx, cy, r: Math.hypot(a.x - cx, a.y - cy) };
+}
 function commitTap(p) {
   review.taps.push({ x: p.x, y: p.y });
   review.tapActive = null;
   review.loupe = null;
-  if (review.taps.length >= 4) {
-    review.quad = orderQuad(review.taps);
-    review.mode = 'adjust';
-    review.shape = 'quad';
-    updateShapeBtn();
-    toast('Corners set ✓ — drag any corner to fine-tune, then Save');
+  if (review.taps.length >= tapsNeeded()) {
+    if (review.shape === 'circle') {
+      const c0 = circleFrom3(review.taps[0], review.taps[1], review.taps[2]);
+      if (!c0) {                       // three points in a line make no circle
+        review.taps.pop();
+        toast('Those points line up — tap 3 spots spread around the edge', 3000);
+        updateTapPrompt();
+        drawReview();
+        return;
+      }
+      review.circle = { cx: c0.cx, cy: c0.cy, r: Math.max(24, c0.r) };
+      review.mode = 'adjust';
+      toast('Circle set ✓ — drag to move, drag the edge to resize');
+    } else {
+      review.quad = orderQuad(review.taps);
+      review.mode = 'adjust';
+      review.shape = 'quad';
+      updateShapeBtn();
+      toast('Corners set ✓ — drag any corner to fine-tune, then Save');
+    }
   }
   updateTapPrompt();
   drawReview();
 }
 function updateTapPrompt() {
   const prompt = $('#tapPrompt');
-  if (review.shape !== 'quad') { prompt.classList.add('hidden'); return; }
+  if (review.shape !== 'quad' && review.shape !== 'circle') { prompt.classList.add('hidden'); return; }
   prompt.classList.remove('hidden');
-  const n = review.mode === 'tap' ? review.taps.length : 4;
+  const tapping = review.mode === 'tap';
+  prompt.classList.toggle('tapping', tapping);   // drives the attention pulse
+  const need = tapsNeeded();
+  const n = tapping ? review.taps.length : need;
   let pips = '';
-  for (let i = 0; i < 4; i++) pips += `<i class="${i < n ? 'on' : ''}"></i>`;
+  for (let i = 0; i < need; i++) pips += `<i class="${i < n ? 'on' : ''}"></i>`;
   $('#tapPips').innerHTML = pips;
-  if (review.mode === 'tap') {
-    $('#tapMsg').textContent = review.taps.length
-      ? `Tap the next corner — ${4 - review.taps.length} to go`
-      : 'Tap the 4 corners of the sleeve';
+  const circle = review.shape === 'circle';
+  if (tapping) {
+    const left = need - review.taps.length;
+    if (review.taps.length) {
+      $('#tapMsg').textContent = circle
+        ? `Tap the next edge point — ${left} to go`
+        : `Tap the next corner — ${left} to go`;
+    } else {
+      $('#tapMsg').textContent = circle
+        ? '👆 Tap 3 points around the label’s edge'
+        : '👆 Tap the 4 corners of the sleeve';
+    }
   } else {
-    $('#tapMsg').textContent = 'Drag a corner to fine-tune';
+    $('#tapMsg').textContent = circle
+      ? 'Drag to move, drag the edge to resize'
+      : 'Drag a corner to fine-tune';
   }
-  $('#btnUndo').textContent = review.mode === 'tap' ? '↶ Undo' : '⟲ Retap';
+  $('#btnUndo').textContent = tapping ? '↶ Undo' : '⟲ Retap';
 }
 function layoutReview() {
   if (!review.bmp) return;
@@ -643,6 +682,8 @@ async function autoDetect() {
       review.circle = defaultCircle();
       toast('Couldn’t find the circle — drag it into place');
     }
+    review.mode = 'adjust';
+    updateTapPrompt();
     drawReview();
     return;
   }
@@ -752,8 +793,9 @@ function drawLoupe(ctx, canvas) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   // crosshair drawn in two passes — a dark halo under an amber core — so it
-  // stays visible over white sleeves as well as dark runouts
-  const cross = 10 * dpr;
+  // stays visible over white sleeves as well as dark runouts; long reticle
+  // (most of the loupe) so the exact aim point is easy to read
+  const cross = R * 0.72;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(c.x - cross, c.y); ctx.lineTo(c.x + cross, c.y);
@@ -1048,8 +1090,8 @@ $('#btnUndo').onclick = () => {
     review.loupe = null;
     updateTapPrompt();
     drawReview();
-  } else if (review.shape === 'quad') {
-    enterTapMode();   // "Retap" — start the four corners over
+  } else if (review.shape === 'quad' || review.shape === 'circle') {
+    enterTapMode();   // "Retap" — start the taps over
   }
 };
 $('#btnShape').onclick = () => {
@@ -1066,12 +1108,9 @@ $('#btnShape').onclick = () => {
   drawReview();
 };
 $('#btnFull').onclick = () => {
-  if (review.shape === 'circle') {
-    review.circle = fullCircle();
-  } else {
-    review.quad = fullQuad();
-    if (review.mode === 'tap') { review.mode = 'adjust'; updateTapPrompt(); }
-  }
+  if (review.shape === 'circle') review.circle = fullCircle();
+  else review.quad = fullQuad();
+  if (review.mode === 'tap') { review.mode = 'adjust'; updateTapPrompt(); }
   drawReview();
 };
 $('#btnRotate').onclick = () => {
@@ -1100,7 +1139,9 @@ function rotateCanvas(c, rot) {
 async function saveShot() {
   if (!review.bmp) return;
   if (review.mode === 'tap') {
-    toast('Tap all 4 corners of the sleeve first — or press Auto / Full', 2800);
+    toast(review.shape === 'circle'
+      ? 'Tap 3 points around the label’s edge first — or press Auto'
+      : 'Tap all 4 corners of the sleeve first — or press Auto / Full', 2800);
     return;
   }
   if (review.shape === 'circle') {
