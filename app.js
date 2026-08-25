@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-155715';
+const APP_VERSION = '20260825-161603';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1342,21 +1342,37 @@ function voiceToGrade(s) {
   // typeof guard: a raw lookup like GRADE_PHRASES["toString"] would hit a prototype method.
   let base = GRADE_PHRASES[t];
   if (typeof base !== 'string') base = GRADE_PHRASES[t.replace(/\s+/g, '')];
+  let rest = '';
+  if (typeof base !== 'string') {
+    // not a pure grade — peel the longest LEADING grade phrase off and keep the
+    // remainder as trailing text, so "near mint 2 eye" becomes NM + "2 eye"
+    // (the grade still abbreviates instead of staying full words).
+    const words = t.split(' ').filter(Boolean);
+    for (let n = Math.min(3, words.length); n >= 1; n--) {
+      const head = words.slice(0, n).join(' ');
+      const g = GRADE_PHRASES[head] || GRADE_PHRASES[head.replace(/\s+/g, '')];
+      if (typeof g === 'string') { base = g; rest = words.slice(n).join(' '); break; }
+    }
+  }
   if (typeof base !== 'string') base = t.replace(/\b(\w) (?=\w\b)/g, '$1').replace(/ {2,}/g, ' ').trim().toUpperCase();
   let out = (base + mod).trim();
   if (deep) out = (out ? out + ' ' : '') + 'DEEP GROOVE';
+  // the remainder goes through the matrix mapper so label bits snap too (2-eye etc.)
+  if (rest) out = (out ? out + ' ' : '') + voiceToMatrix(rest);
   return out;
 }
 // Does a mapped string read as a real grade (optionally +/- and/or deep groove)?
 function isGradeString(s) { return /^(?:M|NM|EX|VG|G|F|P)[+-]?(?: DEEP GROOVE)?$/.test(s); }
+// Or does it at least LEAD with a grade ("NM 2-EYE")? Trailing label text is fine.
+function startsWithGrade(s) { return /^(?:M|NM|EX|VG|G|F|P)[+-]?\b/.test(s); }
 // Pick which of the engine's guesses to keep. Grades are a closed set, so scan the
-// alternatives and take the first that actually IS a grade — the top guess is often
-// a plain-English mishear ("excellent condition") when a lower guess nails it.
+// alternatives and take the first whose result LEADS with a grade — the top guess is
+// often a plain-English mishear ("excellent condition") when a lower guess nails it.
 function pickTranscript(r) {
   if (voiceMap === voiceToGrade) {
     for (let a = 0; a < r.length; a++) {
       const alt = r[a] && r[a].transcript;
-      if (alt && isGradeString(voiceToGrade(alt))) return alt;
+      if (alt && startsWithGrade(voiceToGrade(alt))) return alt;
     }
   }
   return r[0].transcript;
