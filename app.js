@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-153107';
+const APP_VERSION = '20260825-155715';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1292,11 +1292,25 @@ function voiceToMatrix(s) {
     .replace(/ {2,}/g, ' ')
     .trim()
     .toUpperCase()
-    // Columbia "6-eye" pressings: "six eye" is misheard as 6I / "6 EYE" / "6 AYE". Snap it back.
-    .replace(/\b6[\s-]?(?:I|EYE|AYE)\b/g, '6-EYE')
+    // Columbia "eye" label variants (6-eye 1955-62, 2-eye 1962-70): "six eye" /
+    // "two eye" come back as 6I / 2I / "6 EYE" / "2 AYE". Snap them back.
+    .replace(/\b([26])[\s-]?(?:I|EYE|AYE)\b/g, '$1-EYE')
     // "FON" (Columbia pressing mark) is misheard as "IF ON" / "FAWN"; neither is a real runout word.
     .replace(/\bIF ON\b/g, 'FON')
-    .replace(/\bFAWN\b/g, 'FON');
+    .replace(/\bFAWN\b/g, 'FON')
+    // Spelled-out condition grades snap to their code even when more text
+    // follows it ("NEAR MINT 2-EYE" -> "NM 2-EYE"); plus/minus already became
+    // +/- above. Multi-word phrases first so "NEAR MINT" beats "MINT".
+    .replace(/\bNEAR[\s-]?MINT\b/g, 'NM')
+    .replace(/\bVERY[\s-]?GOOD\b/g, 'VG')
+    .replace(/\bEXCELLENT\b/g, 'EX')
+    .replace(/\bMINT\b/g, 'M')
+    .replace(/\bGOOD\b/g, 'G')
+    .replace(/\bFAIR\b/g, 'F')
+    .replace(/\bPOOR\b/g, 'P')
+    // +/- despacing can glue a grade onto a following eye-label ("VG+6-EYE"):
+    // put the space back so grade and label read apart ("VG+ 6-EYE").
+    .replace(/([+-])(\d-EYE)\b/g, '$1 $2');
 }
 // The known grades, and the words / mis-hearings the speech engine hands back for
 // each. Grades are a tiny closed set, so we can snap to the real one — the short
