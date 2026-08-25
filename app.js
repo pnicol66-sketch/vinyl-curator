@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-192546';
+const APP_VERSION = '20260825-203745';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -464,12 +464,13 @@ async function snap() {
 }
 
 /* ---------- review / crop ---------- */
-let review = { bmp: null, quad: null, circle: null, shape: 'quad', mode: 'adjust', taps: [], tapActive: null, rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null };
+let review = { bmp: null, quad: null, circle: null, ellipse: null, shape: 'quad', mode: 'adjust', taps: [], tapActive: null, rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null };
 function freeReview() {
   if (review.bmp && review.bmp.close) review.bmp.close();
   review.bmp = null;
   review.quad = null;
   review.circle = null;
+  review.ellipse = null;
   review.taps = [];
   review.tapActive = null;
   review.dragging = null;
@@ -479,12 +480,13 @@ function openReview(bmp) {
   stopCam();
   freeReview();
   const type = curShot && curShot.type;
-  const shape = type === 'label' ? 'circle' : type === 'matrix' ? 'rect' : 'quad';
-  // covers + LPs seed by tapping the four corners; labels seed by tapping three
-  // points on the rim — outline/circle auto-detect kept as the "Auto" fallback
-  const tapMode = shape === 'quad' || shape === 'circle';
+  const shape = type === 'label' ? 'ellipse' : type === 'matrix' ? 'rect' : 'quad';
+  // covers + LPs seed by tapping the four corners; round labels/discs seed by
+  // tapping the rim (an ellipse — a tilted disc photographs oval) which is then
+  // deskewed to a true circle on save. "○ Circle" drops to a plain circle crop.
+  const tapMode = shape === 'quad' || shape === 'ellipse';
   review = {
-    bmp, quad: null, circle: null, shape,
+    bmp, quad: null, circle: null, ellipse: null, shape,
     mode: tapMode ? 'tap' : 'adjust', taps: [], tapActive: null,
     rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null,
   };
@@ -492,6 +494,7 @@ function openReview(bmp) {
   // run-outs are flat, straight crops: swap the (redundant) Auto button for the
   // rectangle/skew toggle, so the frame can't be knocked out of square by accident
   $('#btnAuto').classList.toggle('hidden', type === 'matrix');
+  $('#btnAuto').textContent = type === 'label' ? '○ Circle' : 'Auto';
   $('#btnShape').classList.toggle('hidden', type !== 'matrix');
   $('#btnUndo').classList.toggle('hidden', shape === 'rect');
   updateShapeBtn();
@@ -500,18 +503,21 @@ function openReview(bmp) {
   if (tapMode) enterTapMode(); else { updateTapPrompt(); autoDetect(); }
 }
 function enterTapMode() {
+  const type = curShot && curShot.type;
+  review.shape = type === 'label' ? 'ellipse' : type === 'matrix' ? 'rect' : 'quad';
   review.mode = 'tap';
   review.taps = [];
   review.quad = null;
   review.circle = null;
+  review.ellipse = null;
   review.tapActive = null;
   review.dragging = null;
   review.loupe = null;
   updateTapPrompt();
   drawReview();
 }
-// how many taps this shape needs to seed: 3 rim points for a circle, 4 corners for a quad
-function tapsNeeded() { return review.shape === 'circle' ? 3 : 4; }
+// taps needed to seed: 5 rim points for an ellipse, 3 for a circle, 4 corners for a quad
+function tapsNeeded() { return review.shape === 'ellipse' ? 5 : review.shape === 'circle' ? 3 : 4; }
 /* order four tapped points into TL,TR,BR,BL regardless of tap order */
 function orderQuad(pts) {
   const s = pts.slice().sort((a, b) => a.y - b.y);
@@ -528,12 +534,75 @@ function circleFrom3(a, b, c) {
   const cy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
   return { cx, cy, r: Math.hypot(a.x - cx, a.y - cy) };
 }
+/* Gauss–Jordan solve of the small square system A x = b; null if singular. */
+function solveLin(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => row.slice().concat([b[i]]));
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    if (Math.abs(M[piv][col]) < 1e-12) return null;
+    const t = M[col]; M[col] = M[piv]; M[piv] = t;
+    const pv = M[col][col];
+    for (let c = col; c <= n; c++) M[col][c] /= pv;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = M[r][col];
+      if (!f) continue;
+      for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+    }
+  }
+  return M.map(row => row[n]);
+}
+/* Fit a general (possibly rotated) ellipse to >=5 rim points by least squares.
+   Returns { cx, cy, ax, ay, theta } — semi-axes ax (along theta) and ay (perp),
+   in image px — or null if the points don't make an ellipse. */
+function fitEllipse(pts) {
+  if (pts.length < 5) return null;
+  let mx = 0, my = 0;
+  for (const p of pts) { mx += p.x; my += p.y; }
+  mx /= pts.length; my /= pts.length;
+  // normal equations for A x² + B xy + C y² + D x + E y = 1 (F = -1), centred
+  const AtA = [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]];
+  const Atb = [0,0,0,0,0];
+  for (const p of pts) {
+    const x = p.x - mx, y = p.y - my;
+    const row = [x*x, x*y, y*y, x, y];
+    for (let i = 0; i < 5; i++) { Atb[i] += row[i]; for (let j = 0; j < 5; j++) AtA[i][j] += row[i] * row[j]; }
+  }
+  const u = solveLin(AtA, Atb);
+  if (!u) return null;
+  const A = u[0], B = u[1], C = u[2], D = u[3], E = u[4], F = -1;
+  const det = B*B - 4*A*C;
+  if (det >= 0) return null;                        // not an ellipse
+  const xc = (2*C*D - B*E) / det, yc = (2*A*E - B*D) / det;
+  const Fp = A*xc*xc + B*xc*yc + C*yc*yc + D*xc + E*yc + F;
+  const theta = 0.5 * Math.atan2(B, A - C);
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  const lTheta = A*ct*ct + B*ct*st + C*st*st;       // form value along theta
+  const lPerp  = A*st*st - B*ct*st + C*ct*ct;        // …and perpendicular
+  const ax = Math.sqrt(-Fp / lTheta), ay = Math.sqrt(-Fp / lPerp);
+  if (!isFinite(ax) || !isFinite(ay) || ax <= 2 || ay <= 2) return null;
+  return { cx: xc + mx, cy: yc + my, ax, ay, theta };
+}
 function commitTap(p) {
   review.taps.push({ x: p.x, y: p.y });
   review.tapActive = null;
   review.loupe = null;
   if (review.taps.length >= tapsNeeded()) {
-    if (review.shape === 'circle') {
+    if (review.shape === 'ellipse') {
+      const e = fitEllipse(review.taps);
+      if (!e) {
+        review.taps.pop();
+        toast('Couldn’t fit that — spread the taps right around the rim', 3000);
+        updateTapPrompt();
+        drawReview();
+        return;
+      }
+      review.ellipse = e;
+      review.mode = 'adjust';
+      toast('Edge set ✓ — Save deskews it round, or tap ○ Circle for a plain crop');
+    } else if (review.shape === 'circle') {
       const c0 = circleFrom3(review.taps[0], review.taps[1], review.taps[2]);
       if (!c0) {                       // three points in a line make no circle
         review.taps.pop();
@@ -558,7 +627,8 @@ function commitTap(p) {
 }
 function updateTapPrompt() {
   const prompt = $('#tapPrompt');
-  if (review.shape !== 'quad' && review.shape !== 'circle') { prompt.classList.add('hidden'); return; }
+  const sh = review.shape;
+  if (sh !== 'quad' && sh !== 'circle' && sh !== 'ellipse') { prompt.classList.add('hidden'); return; }
   prompt.classList.remove('hidden');
   const tapping = review.mode === 'tap';
   prompt.classList.toggle('tapping', tapping);   // drives the attention pulse
@@ -567,21 +637,21 @@ function updateTapPrompt() {
   let pips = '';
   for (let i = 0; i < need; i++) pips += `<i class="${i < n ? 'on' : ''}"></i>`;
   $('#tapPips').innerHTML = pips;
-  const circle = review.shape === 'circle';
+  const round = sh === 'ellipse' || sh === 'circle';
   if (tapping) {
     const left = need - review.taps.length;
     if (review.taps.length) {
-      $('#tapMsg').textContent = circle
+      $('#tapMsg').textContent = round
         ? `Tap the next edge point — ${left} to go`
         : `Tap the next corner — ${left} to go`;
     } else {
-      $('#tapMsg').textContent = circle
-        ? '👆 Tap 3 points around the label’s edge'
+      $('#tapMsg').textContent = sh === 'ellipse' ? '👆 Tap 5 points around the edge'
+        : sh === 'circle' ? '👆 Tap 3 points around the edge'
         : '👆 Tap the 4 corners of the sleeve';
     }
   } else {
-    $('#tapMsg').textContent = circle
-      ? 'Drag to move, drag the edge to resize'
+    $('#tapMsg').textContent = sh === 'ellipse' ? 'Save deskews it to a round crop — or tap ○ Circle'
+      : sh === 'circle' ? 'Drag to move, drag the edge to resize'
       : 'Drag a corner to fine-tune';
   }
   $('#btnUndo').textContent = tapping ? '↶ Undo' : '⟲ Retap';
@@ -675,6 +745,7 @@ async function autoDetect() {
     cx2.drawImage(bmp, 0, 0, sw2, sh2);
     let circ = null;
     try { circ = Detect.detectCircle(cx2.getImageData(0, 0, sw2, sh2)); } catch (e) { console.error(e); }
+    review.shape = 'circle';   // "○ Circle" = plain circle crop, no deskew
     if (circ) {
       review.circle = { cx: circ.cx / sc2, cy: circ.cy / sc2, r: circ.r / sc2 };
       toast('Circle detected ✓ — drag to move, drag the edge to resize');
@@ -884,6 +955,26 @@ function drawReview() {
     drawLoupe(ctx, canvas);
     return;
   }
+  if (review.shape === 'ellipse') {
+    const e = review.ellipse;
+    if (!e) return;
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.ellipse(e.cx * s, e.cy * s, e.ax * s, e.ay * s, e.theta, 0, Math.PI * 2, true);
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fill('evenodd');
+    ctx.beginPath();
+    ctx.ellipse(e.cx * s, e.cy * s, e.ax * s, e.ay * s, e.theta, 0, Math.PI * 2);
+    ctx.strokeStyle = '#f0a832';
+    ctx.lineWidth = 2 * review.dpr;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(e.cx * s, e.cy * s, 4.5 * review.dpr, 0, 7);
+    ctx.fillStyle = '#f0a832';
+    ctx.fill();
+    drawLoupe(ctx, canvas);
+    return;
+  }
   if (review.shape === 'circle') {
     const c0 = review.circle;
     if (!c0) return;
@@ -1090,7 +1181,7 @@ $('#btnUndo').onclick = () => {
     review.loupe = null;
     updateTapPrompt();
     drawReview();
-  } else if (review.shape === 'quad' || review.shape === 'circle') {
+  } else if (review.shape === 'quad' || review.shape === 'circle' || review.shape === 'ellipse') {
     enterTapMode();   // "Retap" — start the taps over
   }
 };
@@ -1108,9 +1199,10 @@ $('#btnShape').onclick = () => {
   drawReview();
 };
 $('#btnFull').onclick = () => {
-  if (review.shape === 'circle') review.circle = fullCircle();
+  if (review.shape === 'ellipse' || review.shape === 'circle') { review.shape = 'circle'; review.circle = fullCircle(); }
   else review.quad = fullQuad();
-  if (review.mode === 'tap') { review.mode = 'adjust'; updateTapPrompt(); }
+  if (review.mode === 'tap') { review.mode = 'adjust'; }
+  updateTapPrompt();
   drawReview();
 };
 $('#btnRotate').onclick = () => {
@@ -1139,12 +1231,16 @@ function rotateCanvas(c, rot) {
 async function saveShot() {
   if (!review.bmp) return;
   if (review.mode === 'tap') {
-    toast(review.shape === 'circle'
-      ? 'Tap 3 points around the label’s edge first — or press Auto'
+    toast(review.shape === 'ellipse'
+      ? 'Tap 5 points around the edge first — or press ○ Circle'
+      : review.shape === 'circle'
+      ? 'Tap 3 points around the edge first — or press Auto'
       : 'Tap all 4 corners of the sleeve first — or press Auto / Full', 2800);
     return;
   }
-  if (review.shape === 'circle') {
+  if (review.shape === 'ellipse') {
+    if (!review.ellipse) { autoDetect(); return; }
+  } else if (review.shape === 'circle') {
     if (!review.circle) { review.circle = defaultCircle(); drawReview(); }
   } else if (!review.quad) {
     review.quad = defaultQuad(); drawReview();
@@ -1156,7 +1252,27 @@ async function saveShot() {
   try {
     const bmp = review.bmp;
     let outCanvas;
-    if (review.shape === 'circle') {
+    if (review.shape === 'ellipse') {
+      // deskew: un-squash the ellipse back to a true circle (rotate its axes to
+      // upright, scale each to R), then mask to that circle
+      const e = review.ellipse;
+      const R = Math.max(e.ax, e.ay);
+      const S = Math.max(2, Math.min(Math.round(2 * R), settings.maxOut));
+      outCanvas = document.createElement('canvas');
+      outCanvas.width = S; outCanvas.height = S;
+      const octx = outCanvas.getContext('2d');
+      octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+      octx.fillStyle = '#fff'; octx.fillRect(0, 0, S, S);
+      octx.save();
+      octx.beginPath(); octx.arc(S / 2, S / 2, S / 2, 0, 7); octx.clip();
+      const Rout = S / 2;
+      octx.translate(S / 2, S / 2);
+      octx.scale(Rout / e.ax, Rout / e.ay);
+      octx.rotate(-e.theta);
+      octx.translate(-e.cx, -e.cy);
+      octx.drawImage(bmp, 0, 0);
+      octx.restore();
+    } else if (review.shape === 'circle') {
       const c0 = review.circle;
       const S = Math.max(2, Math.min(Math.round(2 * c0.r), settings.maxOut));
       outCanvas = document.createElement('canvas');
