@@ -191,10 +191,10 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 #reviewWrap { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; position: relative; }
 #reviewCanvas { display: block; touch-action: none; }
 #tapPrompt {
-  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; pointer-events: none; max-width: 94%;
-  background: rgba(10,10,12,.82); border: 1.5px solid var(--accent);
-  padding: 9px 15px; border-radius: 22px; box-shadow: 0 3px 16px rgba(0,0,0,.45);
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; pointer-events: none; max-width: 94%;
+  background: rgba(10,10,12,.86); border: 2px solid var(--accent);
+  padding: 13px 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,.5);
 }
 #tapPrompt.tapping { animation: tapPulse 1.7s ease-in-out infinite; }
 @keyframes tapPulse {
@@ -202,10 +202,10 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
   50%      { box-shadow: 0 3px 16px rgba(0,0,0,.45), 0 0 0 5px rgba(240,168,50,.22); }
 }
 @media (prefers-reduced-motion: reduce) { #tapPrompt.tapping { animation: none; } }
-#tapPips { display: inline-flex; gap: 5px; flex: none; }
-#tapPips i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-sizing: border-box; border: 1.5px solid var(--dim); }
+#tapPips { display: inline-flex; gap: 6px; flex: none; }
+#tapPips i { width: 13px; height: 13px; border-radius: 50%; display: inline-block; box-sizing: border-box; border: 2px solid var(--dim); }
 #tapPips i.on { background: var(--accent); border-color: var(--accent); }
-#tapMsg { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tapMsg { font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.25; text-align: center; }
 #reviewBar {
   display: flex; gap: 8px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
   background: var(--bg); border-top: 1px solid var(--line);
