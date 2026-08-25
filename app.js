@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-191650';
+const APP_VERSION = '20260825-192546';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -19,7 +19,7 @@ function sanitize(s) { return s.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
 /* ---------- shot definitions ---------- */
-const VINYL_TIP = 'Center the whole disc and fill the frame. Take the photo, then tap 3 points around the edge to crop. Angle it slightly under light so surface marks show honestly.';
+const VINYL_TIP = '📸 Take the photo, then tap 3 points around the edge to crop. Center the whole disc, fill the frame, and angle it slightly under light so surface marks show honestly.';
 const SHOTS = [
   { id: 'front',      n: 1,  name: 'Front Cover',           type: 'cover',  disc: 1 },
   { id: 'frontgrade', n: 2,  name: 'Front Cover Grade',     type: 'grade',  disc: 1 },
@@ -51,9 +51,9 @@ const SHOTS = [
 const SLOTS = [1, 2, 3, 4];
 function slotId(def, n) { return `${def.id}_p${n}`; }
 const TIPS = {
-  cover: 'Lay flat on a plain, contrasting background and fill the frame. Take the photo, then tap the 4 corners to crop.',
-  label: 'Center the label and fill the frame. Take the photo, then tap 3 points around the edge to crop.',
-  matrix: 'Get close to the run-out groove. Angle the disc under light (try 🔦) so the etching casts shadows.',
+  cover: '📸 Take the photo, then tap the 4 corners to crop. Lay it flat on a plain, contrasting background and fill the frame.',
+  label: '📸 Take the photo, then tap 3 points around the edge to crop. Center the label and fill the frame.',
+  matrix: '📸 Take the photo of the run-out groove — angle the disc under light (try 🔦) so the etching casts shadows.',
 };
 
 /* ---------- IndexedDB ---------- */
