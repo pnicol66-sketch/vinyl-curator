@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-161603';
+const APP_VERSION = '20260825-163923';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1335,6 +1335,9 @@ function voiceToGrade(s) {
   t = t.replace(/\bd(?:e{1,2}|i|ea)p[\s-]*gr[o0]+ve?s?\b/g, () => { deep = true; return ' '; });
   // drop filler so "near mint condition" / "excellent copy" still resolve
   t = t.replace(/\b(?:condition|copy|grade|graded|record|vinyl|disc|it's|its|looks?)\b/g, ' ');
+  // the engine mangles "near mint" into "near me" / "nearly" / "near meat" /
+  // "near mid" etc. In a grade box a leading "near m..." can only be near mint.
+  t = t.replace(/\bnear(?:ly\b|\s+m\w*)/g, ' near mint ');
   let mod = '';
   if (/\bplus\b|\+/.test(t)) mod = '+';
   else if (/\b(?:minus|dash|hyphen)\b|-/.test(t)) mod = '-';
