@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-150122';
+const APP_VERSION = '20260825-153107';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -411,6 +411,29 @@ $('#btnSkip').onclick = async () => {
   await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'skipped' });
   backToAlbum();
 };
+// A blank capture (all-black / uniform frame) sometimes comes back from
+// takePhoto() or a not-yet-ready video frame — most often on the matrix/runout
+// close-ups where the torch has just toggled. Uniform frames have ~zero
+// luminance variance; a real photo, even a dim runout, carries texture, so this
+// never rejects a genuinely dark shot.
+function isBlankFrame(bmp) {
+  try {
+    const n = 32;
+    const c = document.createElement('canvas');
+    c.width = n; c.height = n;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(bmp, 0, 0, n, n);
+    const d = cx.getImageData(0, 0, n, n).data;
+    let sum = 0, sum2 = 0;
+    const cnt = n * n;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      sum += l; sum2 += l * l;
+    }
+    const variance = sum2 / cnt - (sum / cnt) ** 2;
+    return variance < 6;
+  } catch { return false; }   // never block a capture on a measurement error
+}
 async function snap() {
   let bmp = null;
   // takePhoto() can run its own autofocus pass, which would undo a manually set focus.
@@ -423,6 +446,8 @@ async function snap() {
       bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
     } catch {}
   }
+  // a blank takePhoto result falls through to the live video frame below
+  if (bmp && isBlankFrame(bmp)) { if (bmp.close) bmp.close(); bmp = null; }
   if (!bmp) {
     const v = $('#video');
     if (!v.videoWidth) return toast('Camera not ready');
@@ -430,6 +455,10 @@ async function snap() {
     c.width = v.videoWidth; c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
     bmp = await createImageBitmap(c);
+    if (isBlankFrame(bmp)) {
+      if (bmp.close) bmp.close();
+      return toast('Camera returned a blank frame — hold steady and snap again', 3000);
+    }
   }
   openReview(bmp);
 }
@@ -722,13 +751,20 @@ function drawLoupe(ctx, canvas) {
   ctx.restore();
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.strokeStyle = 'rgba(255,255,255,.5)';
-  ctx.lineWidth = 1 * dpr;
-  const cross = 9 * dpr;
+  // crosshair drawn in two passes — a dark halo under an amber core — so it
+  // stays visible over white sleeves as well as dark runouts
+  const cross = 10 * dpr;
+  ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(c.x - cross, c.y); ctx.lineTo(c.x + cross, c.y);
   ctx.moveTo(c.x, c.y - cross); ctx.lineTo(c.x, c.y + cross);
+  ctx.strokeStyle = 'rgba(0,0,0,.75)';
+  ctx.lineWidth = 4 * dpr;
   ctx.stroke();
+  ctx.strokeStyle = '#f0a832';
+  ctx.lineWidth = 1.75 * dpr;
+  ctx.stroke();
+  ctx.lineCap = 'butt';
   ctx.beginPath();
   ctx.arc(c.x, c.y, R, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(0,0,0,.6)';
@@ -785,8 +821,11 @@ function drawTapSeeds(ctx) {
   if (a) {
     ctx.beginPath();
     ctx.arc(a.x * s, a.y * s, 11 * dpr, 0, 7);
+    ctx.strokeStyle = 'rgba(0,0,0,.6)';
+    ctx.lineWidth = 4.5 * dpr;
+    ctx.stroke();
     ctx.strokeStyle = '#f0a832';
-    ctx.lineWidth = 2.5 * dpr;
+    ctx.lineWidth = 2 * dpr;
     ctx.stroke();
   }
 }
