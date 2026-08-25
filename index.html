@@ -188,8 +188,18 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 }
 #camFallbackMsg { color: var(--dim); font-size: 14px; max-width: 400px; }
 /* review */
-#reviewWrap { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; }
+#reviewWrap { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; position: relative; }
 #reviewCanvas { display: block; touch-action: none; }
+#tapPrompt {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 9px; pointer-events: none; max-width: 92%;
+  background: rgba(10,10,12,.72); border: 1px solid var(--line);
+  padding: 7px 13px; border-radius: 20px;
+}
+#tapPips { display: inline-flex; gap: 4px; flex: none; }
+#tapPips i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-sizing: border-box; border: 1.5px solid var(--dim); }
+#tapPips i.on { background: var(--accent); border-color: var(--accent); }
+#tapMsg { font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #reviewBar {
   display: flex; gap: 8px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
   background: var(--bg); border-top: 1px solid var(--line);
@@ -335,9 +345,12 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 </section>
 
 <section id="scr-review">
-  <div id="reviewWrap"><canvas id="reviewCanvas"></canvas></div>
+  <div id="reviewWrap"><canvas id="reviewCanvas"></canvas>
+    <div id="tapPrompt" class="hidden"><span id="tapPips"></span><span id="tapMsg"></span></div>
+  </div>
   <div id="reviewBar">
     <button id="btnAuto">Auto</button>
+    <button id="btnUndo" class="hidden">↶ Undo</button>
     <button id="btnShape" class="hidden">◇ Skew</button>
     <button id="btnFull">Full</button>
     <button id="btnRotate">⟳ 0°</button>
