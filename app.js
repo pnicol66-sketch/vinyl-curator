@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260826-025013';
+const APP_VERSION = '20260826-045231';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -117,7 +117,7 @@ const BUILTIN = {
 };
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', aiKey: '', logCrops: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', aiKey: '', logCrops: false, autoCrop: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
 const CROP_FOLDER = 'Vinyl Curator Crop Training';
 // What the app should actually use: an explicit Settings entry always wins, so
 // one client can point a build at their own project without a separate build.
@@ -504,9 +504,32 @@ function openReview(bmp) {
   updateShapeBtn();
   show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
   layoutReview();
-  if (tapMode && aiEnabled()) tryAiThenTap(bmp);
+  if (tapMode && shape === 'quad' && settings.autoCrop) tryOnDeviceThenNext(bmp);
+  else if (tapMode && aiEnabled()) tryAiThenTap(bmp);
   else if (tapMode) enterTapMode();
   else { updateTapPrompt(); autoDetect(); }
+}
+// Phase 1 on-device cover auto-crop: run u2netp, seed the quad, hand off to the
+// same manual review (drag corners). Miss / slow / offline → cloud AI (if a key)
+// or tapping.
+async function tryOnDeviceThenNext(bmp) {
+  review.mode = 'ai';
+  $('#tapPrompt').classList.remove('hidden', 'tapping');
+  $('#tapPips').innerHTML = '';
+  $('#tapMsg').textContent = '✨ Auto-cropping…';
+  drawReview();
+  let res = null;
+  try { res = await onDeviceDetect(bmp, curShot && curShot.type); } catch (e) { console.error(e); }
+  if (review.bmp !== bmp || !$('#scr-review').classList.contains('active')) return;
+  if (res && res.kind === 'quad') {
+    review.quad = res.quad; review.shape = 'quad'; review.mode = 'adjust'; review.aiSeeded = true;
+    updateShapeBtn(); updateTapPrompt(); drawReview();
+    toast('Auto-cropped ✓ — drag any corner to fix, then Save');
+    return;
+  }
+  if (aiEnabled()) { tryAiThenTap(bmp); return; }   // owner fallback
+  enterTapMode();
+  toast('Auto-crop missed — tap the corners', 2400);
 }
 // owner AI auto-crop: seed the crop from Claude vision, then hand off to the same
 // manual review (drag / retap / ○ Circle). Any miss falls back to tapping.
@@ -682,6 +705,98 @@ async function aiDetect(bmp, type) {
   const q = ['tl', 'tr', 'br', 'bl'].map(k => Array.isArray(json[k]) ? inBmp(json[k]) : null);
   if (q.some(p => !p)) return null;
   return { kind: 'quad', quad: q };
+}
+/* ---------- on-device cover auto-crop (u2netp via ONNX Runtime Web) ----------
+   Client-safe: runs in the browser, offline, no key. Phase 1 = covers only. */
+let _ortSession = null, _ortPromise = null;
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error('failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function ortSession() {
+  if (_ortSession) return _ortSession;
+  if (!_ortPromise) {
+    _ortPromise = (async () => {
+      if (typeof ort === 'undefined') await loadScript('./vendor/ort/ort.min.js');
+      ort.env.wasm.numThreads = 1;          // GitHub Pages can't set COOP/COEP for threads
+      ort.env.wasm.simd = true;
+      ort.env.wasm.wasmPaths = './vendor/ort/';
+      _ortSession = await ort.InferenceSession.create('./models/u2netp.onnx', { executionProviders: ['wasm'] });
+      return _ortSession;
+    })().catch(e => { _ortPromise = null; throw e; });
+  }
+  return _ortPromise;
+}
+// keep the largest 4-connected blob in a 320² Uint8 mask (drops strays)
+function keepLargest(mask, S) {
+  const lab = new Int32Array(S * S), q = new Int32Array(S * S);
+  let best = 0, bestSize = 0, cur = 0;
+  for (let s0 = 0; s0 < S * S; s0++) {
+    if (mask[s0] && !lab[s0]) {
+      cur++; let head = 0, tail = 0, size = 0; q[tail++] = s0; lab[s0] = cur;
+      while (head < tail) {
+        const p = q[head++]; size++;
+        const y = (p / S) | 0, x = p - y * S;
+        if (x > 0 && mask[p - 1] && !lab[p - 1]) { lab[p - 1] = cur; q[tail++] = p - 1; }
+        if (x < S - 1 && mask[p + 1] && !lab[p + 1]) { lab[p + 1] = cur; q[tail++] = p + 1; }
+        if (y > 0 && mask[p - S] && !lab[p - S]) { lab[p - S] = cur; q[tail++] = p - S; }
+        if (y < S - 1 && mask[p + S] && !lab[p + S]) { lab[p + S] = cur; q[tail++] = p + S; }
+      }
+      if (size > bestSize) { bestSize = size; best = cur; }
+    }
+  }
+  for (let i = 0; i < S * S; i++) mask[i] = lab[i] === best ? 1 : 0;
+}
+async function onDeviceDetect(bmp, type) {
+  if (type !== 'cover' && type !== 'user') return null;   // Phase 1: covers only
+  let session;
+  try { session = await ortSession(); } catch (e) { console.error('on-device model', e); return null; }
+  const S = 320;
+  const pc = document.createElement('canvas'); pc.width = S; pc.height = S;
+  const pcx = pc.getContext('2d', { willReadFrequently: true });
+  pcx.drawImage(bmp, 0, 0, S, S);
+  const d = pcx.getImageData(0, 0, S, S).data;
+  let mx = 0;
+  for (let i = 0; i < d.length; i += 4) { if (d[i] > mx) mx = d[i]; if (d[i + 1] > mx) mx = d[i + 1]; if (d[i + 2] > mx) mx = d[i + 2]; }
+  if (mx <= 0) mx = 255;
+  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+  const t = new Float32Array(3 * S * S);
+  for (let p = 0; p < S * S; p++) {
+    t[p]             = ((d[p * 4] / mx)     - mean[0]) / std[0];
+    t[S * S + p]     = ((d[p * 4 + 1] / mx) - mean[1]) / std[1];
+    t[2 * S * S + p] = ((d[p * 4 + 2] / mx) - mean[2]) / std[2];
+  }
+  let out;
+  try {
+    const feeds = {}; feeds[session.inputNames[0]] = new ort.Tensor('float32', t, [1, 3, S, S]);
+    out = await session.run(feeds);
+  } catch (e) { console.error('on-device run', e); return null; }
+  const raw = out[session.outputNames[0]].data;
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < S * S; i++) { const v = raw[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+  const rng = (hi - lo) || 1;
+  const mask = new Uint8Array(S * S);
+  let fg = 0;
+  for (let i = 0; i < S * S; i++) { if ((raw[i] - lo) / rng > 0.5) { mask[i] = 1; fg++; } }
+  if (fg < S * S * 0.08 || fg > S * S * 0.97) return null;   // no plausible object
+  keepLargest(mask, S);
+  // four corners by diagonal extremes (squashed 320² space), then map back
+  let tl = null, tr = null, br = null, bl = null, vtl = Infinity, vtr = -Infinity, vbr = -Infinity, vbl = Infinity;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    if (!mask[y * S + x]) continue;
+    const a = x + y, s = x - y;
+    if (a < vtl) { vtl = a; tl = { x, y }; }
+    if (a > vbr) { vbr = a; br = { x, y }; }
+    if (s > vtr) { vtr = s; tr = { x, y }; }
+    if (s < vbl) { vbl = s; bl = { x, y }; }
+  }
+  if (!tl || !tr || !br || !bl) return null;
+  const kx = bmp.width / S, ky = bmp.height / S;
+  const M = p => ({ x: p.x * kx, y: p.y * ky });
+  return { kind: 'quad', quad: orderQuad([M(tl), M(tr), M(br), M(bl)]) };
 }
 function commitTap(p) {
   review.taps.push({ x: p.x, y: p.y });
@@ -2691,6 +2806,7 @@ function openSettings() {
   $('#inClientId').value = settings.clientId;
   $('#inApiKey').value = settings.apiKey;
   $('#inAiKey').value = settings.aiKey || '';
+  $('#inAutoCrop').checked = !!settings.autoCrop;
   $('#inLogCrops').checked = !!settings.logCrops;
   updateCropStat();
   $('#inProjectNumber').value = settings.projectNumber;
@@ -2713,6 +2829,7 @@ $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
   settings.apiKey = $('#inApiKey').value.trim();
   settings.aiKey = $('#inAiKey').value.trim();
+  settings.autoCrop = $('#inAutoCrop').checked;
   settings.logCrops = $('#inLogCrops').checked;
   settings.projectNumber = $('#inProjectNumber').value.trim();
   const shareWas = cred('shareWith');
