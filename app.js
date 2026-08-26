@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260826-020903';
+const APP_VERSION = '20260826-025013';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1405,6 +1405,16 @@ async function logCrop() {
     await dbPut('croplog', { id, blob, geom, uploaded: false, when: Date.now() });
   } catch (e) { console.error('crop log', e); }
 }
+async function updateCropStat() {
+  const el = $('#cropStat');
+  if (!el) return;
+  try {
+    const logs = await dbAll('croplog');
+    if (!logs.length) { el.textContent = settings.logCrops ? 'Crop data: none yet — crop a few records.' : ''; return; }
+    const up = logs.filter(e => e && e.uploaded).length;
+    el.textContent = `Crop data: ${logs.length} saved · ${up} uploaded · ${logs.length - up} waiting for the next album upload.`;
+  } catch (e) { el.textContent = ''; }
+}
 async function saveShot() {
   if (!review.bmp) return;
   if (review.mode === 'tap') {
@@ -2682,6 +2692,7 @@ function openSettings() {
   $('#inApiKey').value = settings.apiKey;
   $('#inAiKey').value = settings.aiKey || '';
   $('#inLogCrops').checked = !!settings.logCrops;
+  updateCropStat();
   $('#inProjectNumber').value = settings.projectNumber;
   $('#inShareWith').value = settings.shareWith;
   // a built-in value is shown as the placeholder, so leaving the box empty
