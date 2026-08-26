@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260826-132718';
+const APP_VERSION = '20260826-175152';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -117,7 +117,7 @@ const BUILTIN = {
 };
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', autoCrop: true, logCrops: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', autoCrop: true, autoLevel: true, logCrops: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
 const CROP_FOLDER = 'Vinyl Curator Crop Training';
 // What the app should actually use: an explicit Settings entry always wins, so
 // one client can point a build at their own project without a separate build.
@@ -1408,6 +1408,97 @@ function rotateCanvas(c, rot) {
   ctx.drawImage(c, -c.width / 2, -c.height / 2);
   return out;
 }
+
+/* ---------- auto-level to the true horizontal plane ----------
+ * The crop shapes get you the right region but not the right ROTATION: the
+ * ellipse deskew leans on the fitted major-axis angle, which is meaningless
+ * for a head-on (near-circular) label, and covers keep whatever hand tilt the
+ * shot had. autoLevelAngle reads the dominant direction of the straight
+ * structure in the crop - the centre text on a label, the edges/text on a
+ * cover - and returns how many degrees it is tilted from level. fineLevel then
+ * rotates the crop to straighten it. A plain disc has no such structure, so
+ * the confidence gate returns 0 and it is never spun blindly. */
+
+// Degrees the dominant straight structure is tilted from level (+ve = clockwise
+// on screen). 0 when there is no confident direction. For circular crops only
+// the central disc is read, so a label's curved rim text never competes with
+// its straight centre text.
+function autoLevelAngle(srcCanvas, circular) {
+  const MAX = 320;
+  const scale = Math.min(1, MAX / Math.max(srcCanvas.width, srcCanvas.height));
+  const w = Math.max(8, Math.round(srcCanvas.width * scale));
+  const h = Math.max(8, Math.round(srcCanvas.height * scale));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx0 = cv.getContext('2d', { willReadFrequently: true });
+  cx0.drawImage(srcCanvas, 0, 0, w, h);
+  const d = cx0.getImageData(0, 0, w, h).data;
+  const g = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < g.length; i++, p += 4) g[i] = 0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2];
+  const cx = w / 2, cy = h / 2, rIn = circular ? 0.6 * Math.min(w, h) / 2 : 0, rIn2 = rIn * rIn;
+  const BINS = 180;                       // 0.5° resolution across ±45°
+  const hist = new Float32Array(BINS);
+  let total = 0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      if (circular) { const dx = x - cx, dy = y - cy; if (dx * dx + dy * dy > rIn2) continue; }
+      const i = y * w + x;
+      const gx = (g[i - w + 1] + 2 * g[i + 1] + g[i + w + 1]) - (g[i - w - 1] + 2 * g[i - 1] + g[i + w - 1]);
+      const gy = (g[i + w - 1] + 2 * g[i + w] + g[i + w + 1]) - (g[i - w - 1] + 2 * g[i - w] + g[i - w + 1]);
+      const mag = Math.abs(gx) + Math.abs(gy);
+      if (mag < 24) continue;
+      let a = Math.atan2(gy, gx) * 180 / Math.PI;   // gradient angle
+      let dev = ((a % 90) + 90) % 90;               // fold to [0,90): grid edges sit at the same value
+      if (dev >= 45) dev -= 90;                      // → [-45,45)
+      let b = Math.floor((dev + 45) / 90 * BINS);
+      if (b < 0) b = 0; else if (b >= BINS) b = BINS - 1;
+      hist[b] += mag; total += mag;
+    }
+  }
+  if (total < 500) return 0;
+  const sm = new Float32Array(BINS);
+  for (let b = 0; b < BINS; b++) sm[b] = 0.25 * hist[(b - 1 + BINS) % BINS] + 0.5 * hist[b] + 0.25 * hist[(b + 1) % BINS];
+  let peak = 0, peakVal = -1;
+  for (let b = 0; b < BINS; b++) if (sm[b] > peakVal) { peakVal = sm[b]; peak = b; }
+  if (peakVal < 3 * (total / BINS)) return 0;      // no dominant direction (e.g. a plain disc)
+  const l = sm[(peak - 1 + BINS) % BINS], r = sm[(peak + 1) % BINS], den = l - 2 * peakVal + r;
+  const off = den !== 0 ? 0.5 * (l - r) / den : 0;  // parabolic sub-bin refine
+  const deg = ((peak + off) / BINS) * 90 - 45;
+  if (!isFinite(deg) || Math.abs(deg) > 25) return 0; // ignore wild corrections; coarse tilt stays manual
+  return deg;
+}
+
+// Largest axis-aligned rectangle inside a w×h rectangle rotated by a (radians).
+function fitRect_(w, h, a) {
+  if (a <= 0) return { w, h };
+  const s = Math.sin(a), c = Math.cos(a);
+  const long = Math.max(w, h), short = Math.min(w, h);
+  if (short <= 2 * s * c * long || Math.abs(s - c) < 1e-9) {
+    const x = 0.5 * short;
+    return w >= h ? { w: x / s, h: x / c } : { w: x / c, h: x / s };
+  }
+  const cos2 = c * c - s * s;
+  return { w: (w * c - h * s) / cos2, h: (h * c - w * s) / cos2 };
+}
+
+// Rotate a crop by -deg to level it. Circular crops rotate in place (the disc
+// stays inside the square); rectangular crops over-scan just enough to fill the
+// frame with no white corners, keeping the original aspect.
+function fineLevel(src, deg, circular) {
+  const rad = -deg * Math.PI / 180;
+  const w = src.width, h = src.height;
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  if (circular) {
+    ctx.translate(w / 2, h / 2); ctx.rotate(rad); ctx.drawImage(src, -w / 2, -h / 2);
+    return out;
+  }
+  const fr = fitRect_(w, h, Math.abs(rad));
+  const k = Math.max(w / fr.w, h / fr.h);          // over-scan so the leveled rect fills the frame
+  ctx.translate(w / 2, h / 2); ctx.rotate(rad); ctx.scale(k, k); ctx.drawImage(src, -w / 2, -h / 2);
+  return out;
+}
 // Queue one crop training example: the ORIGINAL (uncropped) photo + the crop
 // geometry you set, in the logged image's own pixels. Non-fatal on any error.
 async function logCrop() {
@@ -1482,6 +1573,11 @@ async function saveShot() {
       // upright, scale each to R), then mask to that circle
       const e = review.ellipse;
       const R = Math.max(e.ax, e.ay);
+      // A near-circular (head-on) fit has a meaningless major-axis angle, so
+      // rotating by it just spins the label to a random tilt. Only deskew-rotate
+      // when the ellipse is clearly elongated; auto-level fixes the rest.
+      const elong = Math.max(e.ax, e.ay) / Math.max(1e-6, Math.min(e.ax, e.ay));
+      const eTheta = elong < 1.06 ? 0 : e.theta;
       const S = Math.max(2, Math.min(Math.round(2 * R), settings.maxOut));
       outCanvas = document.createElement('canvas');
       outCanvas.width = S; outCanvas.height = S;
@@ -1493,7 +1589,7 @@ async function saveShot() {
       const Rout = S / 2;
       octx.translate(S / 2, S / 2);
       octx.scale(Rout / e.ax, Rout / e.ay);
-      octx.rotate(-e.theta);
+      octx.rotate(-eTheta);
       octx.translate(-e.cx, -e.cy);
       octx.drawImage(bmp, 0, 0);
       octx.restore();
@@ -1539,6 +1635,13 @@ async function saveShot() {
       outCanvas.getContext('2d').putImageData(outData, 0, 0);
     }
     if (review.rot) outCanvas = rotateCanvas(outCanvas, review.rot);
+    if (settings.autoLevel !== false) {
+      try {
+        const circular = review.shape === 'ellipse' || review.shape === 'circle';
+        const lvl = autoLevelAngle(outCanvas, circular);
+        if (lvl) outCanvas = fineLevel(outCanvas, lvl, circular);
+      } catch (e) { console.error('auto-level', e); }  // never block a save on it
+    }
     const blob = await new Promise((res, rej) =>
       outCanvas.toBlob(b => b ? res(b) : rej(new Error('JPEG encode failed')), 'image/jpeg', settings.quality));
     await logCrop();   // queue the (original + geometry) training example
@@ -2755,6 +2858,7 @@ function openSettings() {
   $('#inClientId').value = settings.clientId;
   $('#inApiKey').value = settings.apiKey;
   $('#inAutoCrop').checked = settings.autoCrop !== false;
+  $('#inAutoLevel').checked = settings.autoLevel !== false;
   $('#inLogCrops').checked = !!settings.logCrops;
   updateCropStat();
   $('#inProjectNumber').value = settings.projectNumber;
@@ -2777,6 +2881,7 @@ $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
   settings.apiKey = $('#inApiKey').value.trim();
   settings.autoCrop = $('#inAutoCrop').checked;
+  settings.autoLevel = $('#inAutoLevel').checked;
   settings.logCrops = $('#inLogCrops').checked;
   settings.projectNumber = $('#inProjectNumber').value.trim();
   const shareWas = cred('shareWith');
