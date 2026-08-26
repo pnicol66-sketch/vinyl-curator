@@ -472,6 +472,10 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <p style="color:var(--dim);font-size:13px">With a key set, this device sends each photo to Claude to <b>auto-crop</b> the cover, label or disc before you review — you just fix and Save. The key is stored only in this browser and is never shared. Leave it empty and you crop by tapping, exactly as now.</p>
     <label class="field" for="inAiKey">Anthropic API key</label>
     <input type="text" id="inAiKey" autocomplete="off" placeholder="sk-ant-…">
+    <label style="display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:14px">
+      <input type="checkbox" id="inLogCrops" style="margin-top:3px">
+      <span>Save each crop as training data to Drive — the original photo plus the crop you set, in a <b>“Vinyl Curator Crop Training”</b> folder. Builds a dataset (at zero extra effort) for training an on-device auto-crop later. Uploaded next time you upload an album.</span>
+    </label>
   </details>
 
   <label class="field">Drive folders for uploads — tap one to make it the default</label>
