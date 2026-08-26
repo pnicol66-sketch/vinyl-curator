@@ -467,6 +467,13 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <input type="text" id="inProjectNumber" inputmode="numeric" autocomplete="off" placeholder="123456789012">
   </details>
 
+  <details style="margin-top:16px">
+    <summary>AI auto-crop <span class="lbl-opt">— owner only</span></summary>
+    <p style="color:var(--dim);font-size:13px">With a key set, this device sends each photo to Claude to <b>auto-crop</b> the cover, label or disc before you review — you just fix and Save. The key is stored only in this browser and is never shared. Leave it empty and you crop by tapping, exactly as now.</p>
+    <label class="field" for="inAiKey">Anthropic API key</label>
+    <input type="text" id="inAiKey" autocomplete="off" placeholder="sk-ant-…">
+  </details>
+
   <label class="field">Drive folders for uploads — tap one to make it the default</label>
   <div id="folderList"></div>
   <div class="addrow">
