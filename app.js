@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260826-002836';
+const APP_VERSION = '20260826-020903';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -60,12 +60,15 @@ const TIPS = {
 let _db = null;
 function openDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('vinylsnap', 1);
+    const r = indexedDB.open('vinylsnap', 2);
     r.onupgradeneeded = () => {
       const d = r.result;
-      d.createObjectStore('albums', { keyPath: 'id' });
-      d.createObjectStore('shots', { keyPath: ['albumId', 'shotId'] });
-      d.createObjectStore('kv');
+      if (!d.objectStoreNames.contains('albums')) d.createObjectStore('albums', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('shots')) d.createObjectStore('shots', { keyPath: ['albumId', 'shotId'] });
+      if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+      // crop training data: original photo + the crop geometry you set, queued
+      // for upload to a dedicated Drive folder (owner opt-in)
+      if (!d.objectStoreNames.contains('croplog')) d.createObjectStore('croplog', { keyPath: 'id' });
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -114,7 +117,8 @@ const BUILTIN = {
 };
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', aiKey: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', aiKey: '', logCrops: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+const CROP_FOLDER = 'Vinyl Curator Crop Training';
 // What the app should actually use: an explicit Settings entry always wins, so
 // one client can point a build at their own project without a separate build.
 function cred(k) { return String(settings[k] || BUILTIN[k] || '').trim(); }
@@ -517,11 +521,11 @@ async function tryAiThenTap(bmp) {
   // bail if the user navigated away or retook while we were waiting
   if (review.bmp !== bmp || !$('#scr-review').classList.contains('active')) return;
   if (res && res.kind === 'quad') {
-    review.quad = res.quad; review.shape = 'quad'; review.mode = 'adjust';
+    review.quad = res.quad; review.shape = 'quad'; review.mode = 'adjust'; review.aiSeeded = true;
     updateShapeBtn(); updateTapPrompt(); drawReview();
     toast('AI cropped ✓ — drag any corner to fix, then Save');
   } else if (res && res.kind === 'ellipse') {
-    review.ellipse = res.ellipse; review.shape = 'ellipse'; review.mode = 'adjust';
+    review.ellipse = res.ellipse; review.shape = 'ellipse'; review.mode = 'adjust'; review.aiSeeded = true;
     updateTapPrompt(); drawReview();
     toast('AI cropped ✓ — drag to fix, or ○ Circle, then Save');
   } else {
@@ -1366,6 +1370,41 @@ function rotateCanvas(c, rot) {
   ctx.drawImage(c, -c.width / 2, -c.height / 2);
   return out;
 }
+// Queue one crop training example: the ORIGINAL (uncropped) photo + the crop
+// geometry you set, in the logged image's own pixels. Non-fatal on any error.
+async function logCrop() {
+  try {
+    if (!settings.logCrops || !review.bmp) return;
+    const bmp = review.bmp;
+    const maxL = 1280;
+    const sc = Math.min(1, maxL / Math.max(bmp.width, bmp.height));
+    const w = Math.max(2, Math.round(bmp.width * sc)), h = Math.max(2, Math.round(bmp.height * sc));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    if (!blob) return;
+    const r1 = v => Math.round(v * sc * 10) / 10;
+    let geomData;
+    if (review.shape === 'ellipse' && review.ellipse) {
+      const e = review.ellipse;
+      geomData = { cx: r1(e.cx), cy: r1(e.cy), ax: r1(e.ax), ay: r1(e.ay), theta: Math.round(e.theta * 1e4) / 1e4 };
+    } else if (review.shape === 'circle' && review.circle) {
+      const c0 = review.circle;
+      geomData = { cx: r1(c0.cx), cy: r1(c0.cy), r: r1(c0.r) };
+    } else if (review.quad) {
+      geomData = review.quad.map(p => [r1(p.x), r1(p.y)]);
+    } else return;
+    const id = 'crop_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const geom = {
+      id, when: new Date().toISOString(), app: APP_VERSION,
+      shot: curShot ? { id: curShot.id, type: curShot.type, name: curShot.name } : null,
+      album: curAlbum ? { id: curAlbum.id, artist: curAlbum.artist, title: curAlbum.title } : null,
+      image: { w, h }, shape: review.shape, rot: review.rot || 0,
+      source: review.aiSeeded ? 'ai+manual' : 'manual', geom: geomData,
+    };
+    await dbPut('croplog', { id, blob, geom, uploaded: false, when: Date.now() });
+  } catch (e) { console.error('crop log', e); }
+}
 async function saveShot() {
   if (!review.bmp) return;
   if (review.mode === 'tap') {
@@ -1454,6 +1493,7 @@ async function saveShot() {
     if (review.rot) outCanvas = rotateCanvas(outCanvas, review.rot);
     const blob = await new Promise((res, rej) =>
       outCanvas.toBlob(b => b ? res(b) : rej(new Error('JPEG encode failed')), 'image/jpeg', settings.quality));
+    await logCrop();   // queue the (original + geometry) training example
     if (curSlot) {
       await dbPut('shots', { albumId: curAlbum.id, shotId: slotId(curShot, curSlot), status: 'photo', blob, when: Date.now() });
       const saved = curSlot;
@@ -1994,6 +2034,25 @@ async function uploadFile(folder, name, mime, blob) {
     body,
   });
 }
+// Upload any queued crop training examples (original photo + geometry sidecar)
+// into their own Drive folder, then mark them done. Reuses the live token, so
+// it piggybacks on a normal album upload. Returns how many pairs went up.
+async function syncCropLogs(onStatus) {
+  const pending = (await dbAll('croplog')).filter(e => e && !e.uploaded && e.blob);
+  if (!pending.length) return 0;
+  const folder = await findOrCreateFolder(CROP_FOLDER, 'root');
+  let n = 0;
+  for (const e of pending) {
+    if (onStatus) onStatus(`Saving crop data ${n + 1}/${pending.length}…`);
+    await uploadFile(folder, e.id + '.jpg', 'image/jpeg', e.blob);
+    await uploadFile(folder, e.id + '.json', 'application/json',
+      new Blob([JSON.stringify(e.geom, null, 0)], { type: 'application/json' }));
+    e.uploaded = true;
+    await dbPut('croplog', e);
+    n++;
+  }
+  return n;
+}
 
 // The album's own record of what it is, written into its Drive folder.
 //
@@ -2229,6 +2288,12 @@ $('#btnDrive').onclick = async () => {
     curAlbum.driveFolderName = importFolder;
     curAlbum.driveFolderId = folder;
     await dbPut('albums', curAlbum);
+    if (settings.logCrops) {
+      try {
+        const cn = await syncCropLogs(t => { st.textContent = t; });
+        if (cn) toast(`+${cn} crop training example${cn === 1 ? '' : 's'} → Drive`, 3000);
+      } catch (e) { console.error('crop sync', e); }
+    }
     toast(`Uploaded ${exportItems.length} files ✓ — album moved to “Uploaded albums”`, 3600);
     goHome();
   } catch (e) {
@@ -2616,6 +2681,7 @@ function openSettings() {
   $('#inClientId').value = settings.clientId;
   $('#inApiKey').value = settings.apiKey;
   $('#inAiKey').value = settings.aiKey || '';
+  $('#inLogCrops').checked = !!settings.logCrops;
   $('#inProjectNumber').value = settings.projectNumber;
   $('#inShareWith').value = settings.shareWith;
   // a built-in value is shown as the placeholder, so leaving the box empty
@@ -2636,6 +2702,7 @@ $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
   settings.apiKey = $('#inApiKey').value.trim();
   settings.aiKey = $('#inAiKey').value.trim();
+  settings.logCrops = $('#inLogCrops').checked;
   settings.projectNumber = $('#inProjectNumber').value.trim();
   const shareWas = cred('shareWith');
   settings.shareWith = $('#inShareWith').value.trim();
