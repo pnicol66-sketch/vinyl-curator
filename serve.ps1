@@ -13,6 +13,9 @@ $mime = @{
   '.css' = 'text/css; charset=utf-8'
   '.png' = 'image/png'
   '.md' = 'text/plain; charset=utf-8'
+  '.wasm' = 'application/wasm'
+  '.onnx' = 'application/octet-stream'
+  '.jpg' = 'image/jpeg'
 }
 while ($listener.IsListening) {
   try {
