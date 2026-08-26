@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260826-045231';
+const APP_VERSION = '20260826-123004';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -117,7 +117,7 @@ const BUILTIN = {
 };
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', aiKey: '', logCrops: false, autoCrop: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', logCrops: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
 const CROP_FOLDER = 'Vinyl Curator Crop Training';
 // What the app should actually use: an explicit Settings entry always wins, so
 // one client can point a build at their own project without a separate build.
@@ -504,57 +504,8 @@ function openReview(bmp) {
   updateShapeBtn();
   show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
   layoutReview();
-  if (tapMode && shape === 'quad' && settings.autoCrop) tryOnDeviceThenNext(bmp);
-  else if (tapMode && aiEnabled()) tryAiThenTap(bmp);
-  else if (tapMode) enterTapMode();
+  if (tapMode) enterTapMode();
   else { updateTapPrompt(); autoDetect(); }
-}
-// Phase 1 on-device cover auto-crop: run u2netp, seed the quad, hand off to the
-// same manual review (drag corners). Miss / slow / offline → cloud AI (if a key)
-// or tapping.
-async function tryOnDeviceThenNext(bmp) {
-  review.mode = 'ai';
-  $('#tapPrompt').classList.remove('hidden', 'tapping');
-  $('#tapPips').innerHTML = '';
-  $('#tapMsg').textContent = '✨ Auto-cropping…';
-  drawReview();
-  let res = null;
-  try { res = await onDeviceDetect(bmp, curShot && curShot.type); } catch (e) { console.error(e); }
-  if (review.bmp !== bmp || !$('#scr-review').classList.contains('active')) return;
-  if (res && res.kind === 'quad') {
-    review.quad = res.quad; review.shape = 'quad'; review.mode = 'adjust'; review.aiSeeded = true;
-    updateShapeBtn(); updateTapPrompt(); drawReview();
-    toast('Auto-cropped ✓ — drag any corner to fix, then Save');
-    return;
-  }
-  if (aiEnabled()) { tryAiThenTap(bmp); return; }   // owner fallback
-  enterTapMode();
-  toast('Auto-crop missed — tap the corners', 2400);
-}
-// owner AI auto-crop: seed the crop from Claude vision, then hand off to the same
-// manual review (drag / retap / ○ Circle). Any miss falls back to tapping.
-async function tryAiThenTap(bmp) {
-  const type = curShot && curShot.type;
-  review.mode = 'ai';
-  $('#tapPrompt').classList.remove('hidden', 'tapping');
-  $('#tapPips').innerHTML = '';
-  $('#tapMsg').textContent = '✨ AI cropping…';
-  drawReview();
-  const res = await aiDetect(bmp, type);
-  // bail if the user navigated away or retook while we were waiting
-  if (review.bmp !== bmp || !$('#scr-review').classList.contains('active')) return;
-  if (res && res.kind === 'quad') {
-    review.quad = res.quad; review.shape = 'quad'; review.mode = 'adjust'; review.aiSeeded = true;
-    updateShapeBtn(); updateTapPrompt(); drawReview();
-    toast('AI cropped ✓ — drag any corner to fix, then Save');
-  } else if (res && res.kind === 'ellipse') {
-    review.ellipse = res.ellipse; review.shape = 'ellipse'; review.mode = 'adjust'; review.aiSeeded = true;
-    updateTapPrompt(); drawReview();
-    toast('AI cropped ✓ — drag to fix, or ○ Circle, then Save');
-  } else {
-    enterTapMode();
-    toast('AI couldn’t crop it — do it by tapping', 2600);
-  }
 }
 function enterTapMode() {
   const type = curShot && curShot.type;
@@ -644,159 +595,6 @@ function ellipseNormDist(el, px, py) {
   const dx = px - el.cx, dy = py - el.cy, ct = Math.cos(el.theta), st = Math.sin(el.theta);
   const lx = dx * ct + dy * st, ly = -dx * st + dy * ct;
   return Math.hypot(lx / el.ax, ly / el.ay);
-}
-/* ---------- owner-only AI auto-crop (Claude vision, browser-direct) ---------- */
-function aiEnabled() { return !!(settings.aiKey && settings.aiKey.trim()) && navigator.onLine; }
-function pullJson(text) {
-  const m = String(text || '').match(/[\[{][\s\S]*[\]}]/);
-  if (!m) return null;
-  try { return JSON.parse(m[0]); } catch (e) { return null; }
-}
-// Ask Claude for the crop geometry: 4 cover corners, or 8 rim points for a round
-// label/disc. Returns { kind:'quad', quad } | { kind:'ellipse', ellipse } | null.
-async function aiDetect(bmp, type) {
-  if (!aiEnabled()) return null;
-  const round = type === 'label';
-  const maxSide = 1024;
-  const scd = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
-  const w = Math.max(2, Math.round(bmp.width * scd)), h = Math.max(2, Math.round(bmp.height * scd));
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  c.getContext('2d').drawImage(bmp, 0, 0, w, h);
-  const b64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
-  const prompt = round
-    ? 'This photo shows a vinyl record\'s round paper LABEL (or the whole black disc) lying on a background. It is a circle seen at an angle, so it looks like an ellipse. Return ONLY a JSON array of 8 points spread evenly right around the OUTER edge of the label/disc, as normalized [x,y] with x from left and y from top, each in 0..1: [[x,y],[x,y],...]. Trace the true rim precisely. Output only the JSON array.'
-    : 'This photo shows a vinyl record album COVER (a square printed cardboard sleeve) on a background such as a table. Return ONLY a JSON object with the four corners of the cover as normalized [x,y] (x from left, y from top, each 0..1): {"tl":[x,y],"tr":[x,y],"br":[x,y],"bl":[x,y]}. Trace the actual cover edges and exclude the background; if a clear plastic outer sleeve overhangs the cardboard, use the cardboard edge. Output only the JSON object.';
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 25000);
-  let data;
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', signal: ctrl.signal,
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': settings.aiKey.trim(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: settings.aiModel || 'claude-opus-5',
-        max_tokens: 1200,
-        output_config: { effort: 'low' },
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-          { type: 'text', text: prompt },
-        ] }],
-      }),
-    });
-    clearTimeout(timer);
-    if (!resp.ok) { console.error('AI crop', resp.status, await resp.text().catch(() => '')); return null; }
-    data = await resp.json();
-  } catch (e) { clearTimeout(timer); console.error('AI crop', e); return null; }
-  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-  const json = pullJson(text);
-  if (!json) return null;
-  const inBmp = ([x, y]) => ({ x: Math.max(0, Math.min(1, x)) * bmp.width, y: Math.max(0, Math.min(1, y)) * bmp.height });
-  if (round) {
-    const arr = Array.isArray(json) ? json : json.points;
-    if (!Array.isArray(arr) || arr.length < 5) return null;
-    const e = fitEllipse(arr.filter(p => Array.isArray(p) && p.length >= 2).map(inBmp));
-    return e ? { kind: 'ellipse', ellipse: e } : null;
-  }
-  const q = ['tl', 'tr', 'br', 'bl'].map(k => Array.isArray(json[k]) ? inBmp(json[k]) : null);
-  if (q.some(p => !p)) return null;
-  return { kind: 'quad', quad: q };
-}
-/* ---------- on-device cover auto-crop (u2netp via ONNX Runtime Web) ----------
-   Client-safe: runs in the browser, offline, no key. Phase 1 = covers only. */
-let _ortSession = null, _ortPromise = null;
-function loadScript(src) {
-  return new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error('failed to load ' + src));
-    document.head.appendChild(s);
-  });
-}
-async function ortSession() {
-  if (_ortSession) return _ortSession;
-  if (!_ortPromise) {
-    _ortPromise = (async () => {
-      if (typeof ort === 'undefined') await loadScript('./vendor/ort/ort.min.js');
-      ort.env.wasm.numThreads = 1;          // GitHub Pages can't set COOP/COEP for threads
-      ort.env.wasm.simd = true;
-      ort.env.wasm.wasmPaths = './vendor/ort/';
-      _ortSession = await ort.InferenceSession.create('./models/u2netp.onnx', { executionProviders: ['wasm'] });
-      return _ortSession;
-    })().catch(e => { _ortPromise = null; throw e; });
-  }
-  return _ortPromise;
-}
-// keep the largest 4-connected blob in a 320² Uint8 mask (drops strays)
-function keepLargest(mask, S) {
-  const lab = new Int32Array(S * S), q = new Int32Array(S * S);
-  let best = 0, bestSize = 0, cur = 0;
-  for (let s0 = 0; s0 < S * S; s0++) {
-    if (mask[s0] && !lab[s0]) {
-      cur++; let head = 0, tail = 0, size = 0; q[tail++] = s0; lab[s0] = cur;
-      while (head < tail) {
-        const p = q[head++]; size++;
-        const y = (p / S) | 0, x = p - y * S;
-        if (x > 0 && mask[p - 1] && !lab[p - 1]) { lab[p - 1] = cur; q[tail++] = p - 1; }
-        if (x < S - 1 && mask[p + 1] && !lab[p + 1]) { lab[p + 1] = cur; q[tail++] = p + 1; }
-        if (y > 0 && mask[p - S] && !lab[p - S]) { lab[p - S] = cur; q[tail++] = p - S; }
-        if (y < S - 1 && mask[p + S] && !lab[p + S]) { lab[p + S] = cur; q[tail++] = p + S; }
-      }
-      if (size > bestSize) { bestSize = size; best = cur; }
-    }
-  }
-  for (let i = 0; i < S * S; i++) mask[i] = lab[i] === best ? 1 : 0;
-}
-async function onDeviceDetect(bmp, type) {
-  if (type !== 'cover' && type !== 'user') return null;   // Phase 1: covers only
-  let session;
-  try { session = await ortSession(); } catch (e) { console.error('on-device model', e); return null; }
-  const S = 320;
-  const pc = document.createElement('canvas'); pc.width = S; pc.height = S;
-  const pcx = pc.getContext('2d', { willReadFrequently: true });
-  pcx.drawImage(bmp, 0, 0, S, S);
-  const d = pcx.getImageData(0, 0, S, S).data;
-  let mx = 0;
-  for (let i = 0; i < d.length; i += 4) { if (d[i] > mx) mx = d[i]; if (d[i + 1] > mx) mx = d[i + 1]; if (d[i + 2] > mx) mx = d[i + 2]; }
-  if (mx <= 0) mx = 255;
-  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
-  const t = new Float32Array(3 * S * S);
-  for (let p = 0; p < S * S; p++) {
-    t[p]             = ((d[p * 4] / mx)     - mean[0]) / std[0];
-    t[S * S + p]     = ((d[p * 4 + 1] / mx) - mean[1]) / std[1];
-    t[2 * S * S + p] = ((d[p * 4 + 2] / mx) - mean[2]) / std[2];
-  }
-  let out;
-  try {
-    const feeds = {}; feeds[session.inputNames[0]] = new ort.Tensor('float32', t, [1, 3, S, S]);
-    out = await session.run(feeds);
-  } catch (e) { console.error('on-device run', e); return null; }
-  const raw = out[session.outputNames[0]].data;
-  let lo = Infinity, hi = -Infinity;
-  for (let i = 0; i < S * S; i++) { const v = raw[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
-  const rng = (hi - lo) || 1;
-  const mask = new Uint8Array(S * S);
-  let fg = 0;
-  for (let i = 0; i < S * S; i++) { if ((raw[i] - lo) / rng > 0.5) { mask[i] = 1; fg++; } }
-  if (fg < S * S * 0.08 || fg > S * S * 0.97) return null;   // no plausible object
-  keepLargest(mask, S);
-  // four corners by diagonal extremes (squashed 320² space), then map back
-  let tl = null, tr = null, br = null, bl = null, vtl = Infinity, vtr = -Infinity, vbr = -Infinity, vbl = Infinity;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    if (!mask[y * S + x]) continue;
-    const a = x + y, s = x - y;
-    if (a < vtl) { vtl = a; tl = { x, y }; }
-    if (a > vbr) { vbr = a; br = { x, y }; }
-    if (s > vtr) { vtr = s; tr = { x, y }; }
-    if (s < vbl) { vbl = s; bl = { x, y }; }
-  }
-  if (!tl || !tr || !br || !bl) return null;
-  const kx = bmp.width / S, ky = bmp.height / S;
-  const M = p => ({ x: p.x * kx, y: p.y * ky });
-  return { kind: 'quad', quad: orderQuad([M(tl), M(tr), M(br), M(bl)]) };
 }
 function commitTap(p) {
   review.taps.push({ x: p.x, y: p.y });
@@ -1515,7 +1313,7 @@ async function logCrop() {
       shot: curShot ? { id: curShot.id, type: curShot.type, name: curShot.name } : null,
       album: curAlbum ? { id: curAlbum.id, artist: curAlbum.artist, title: curAlbum.title } : null,
       image: { w, h }, shape: review.shape, rot: review.rot || 0,
-      source: review.aiSeeded ? 'ai+manual' : 'manual', geom: geomData,
+      source: 'manual', geom: geomData,
     };
     await dbPut('croplog', { id, blob, geom, uploaded: false, when: Date.now() });
   } catch (e) { console.error('crop log', e); }
@@ -2805,8 +2603,6 @@ $('#btnAddFolder').onclick = () => {
 function openSettings() {
   $('#inClientId').value = settings.clientId;
   $('#inApiKey').value = settings.apiKey;
-  $('#inAiKey').value = settings.aiKey || '';
-  $('#inAutoCrop').checked = !!settings.autoCrop;
   $('#inLogCrops').checked = !!settings.logCrops;
   updateCropStat();
   $('#inProjectNumber').value = settings.projectNumber;
@@ -2828,8 +2624,6 @@ function openSettings() {
 $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
   settings.apiKey = $('#inApiKey').value.trim();
-  settings.aiKey = $('#inAiKey').value.trim();
-  settings.autoCrop = $('#inAutoCrop').checked;
   settings.logCrops = $('#inLogCrops').checked;
   settings.projectNumber = $('#inProjectNumber').value.trim();
   const shareWas = cred('shareWith');
