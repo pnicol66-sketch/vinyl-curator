@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260825-203745';
+const APP_VERSION = '20260826-002836';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -114,7 +114,7 @@ const BUILTIN = {
 };
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', aiKey: '', maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
 // What the app should actually use: an explicit Settings entry always wins, so
 // one client can point a build at their own project without a separate build.
 function cred(k) { return String(settings[k] || BUILTIN[k] || '').trim(); }
@@ -500,7 +500,34 @@ function openReview(bmp) {
   updateShapeBtn();
   show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
   layoutReview();
-  if (tapMode) enterTapMode(); else { updateTapPrompt(); autoDetect(); }
+  if (tapMode && aiEnabled()) tryAiThenTap(bmp);
+  else if (tapMode) enterTapMode();
+  else { updateTapPrompt(); autoDetect(); }
+}
+// owner AI auto-crop: seed the crop from Claude vision, then hand off to the same
+// manual review (drag / retap / ○ Circle). Any miss falls back to tapping.
+async function tryAiThenTap(bmp) {
+  const type = curShot && curShot.type;
+  review.mode = 'ai';
+  $('#tapPrompt').classList.remove('hidden', 'tapping');
+  $('#tapPips').innerHTML = '';
+  $('#tapMsg').textContent = '✨ AI cropping…';
+  drawReview();
+  const res = await aiDetect(bmp, type);
+  // bail if the user navigated away or retook while we were waiting
+  if (review.bmp !== bmp || !$('#scr-review').classList.contains('active')) return;
+  if (res && res.kind === 'quad') {
+    review.quad = res.quad; review.shape = 'quad'; review.mode = 'adjust';
+    updateShapeBtn(); updateTapPrompt(); drawReview();
+    toast('AI cropped ✓ — drag any corner to fix, then Save');
+  } else if (res && res.kind === 'ellipse') {
+    review.ellipse = res.ellipse; review.shape = 'ellipse'; review.mode = 'adjust';
+    updateTapPrompt(); drawReview();
+    toast('AI cropped ✓ — drag to fix, or ○ Circle, then Save');
+  } else {
+    enterTapMode();
+    toast('AI couldn’t crop it — do it by tapping', 2600);
+  }
 }
 function enterTapMode() {
   const type = curShot && curShot.type;
@@ -585,6 +612,73 @@ function fitEllipse(pts) {
   if (!isFinite(ax) || !isFinite(ay) || ax <= 2 || ay <= 2) return null;
   return { cx: xc + mx, cy: yc + my, ax, ay, theta };
 }
+// normalized radial distance of a point from an ellipse centre (1 = on the rim)
+function ellipseNormDist(el, px, py) {
+  const dx = px - el.cx, dy = py - el.cy, ct = Math.cos(el.theta), st = Math.sin(el.theta);
+  const lx = dx * ct + dy * st, ly = -dx * st + dy * ct;
+  return Math.hypot(lx / el.ax, ly / el.ay);
+}
+/* ---------- owner-only AI auto-crop (Claude vision, browser-direct) ---------- */
+function aiEnabled() { return !!(settings.aiKey && settings.aiKey.trim()) && navigator.onLine; }
+function pullJson(text) {
+  const m = String(text || '').match(/[\[{][\s\S]*[\]}]/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch (e) { return null; }
+}
+// Ask Claude for the crop geometry: 4 cover corners, or 8 rim points for a round
+// label/disc. Returns { kind:'quad', quad } | { kind:'ellipse', ellipse } | null.
+async function aiDetect(bmp, type) {
+  if (!aiEnabled()) return null;
+  const round = type === 'label';
+  const maxSide = 1024;
+  const scd = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const w = Math.max(2, Math.round(bmp.width * scd)), h = Math.max(2, Math.round(bmp.height * scd));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  const b64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
+  const prompt = round
+    ? 'This photo shows a vinyl record\'s round paper LABEL (or the whole black disc) lying on a background. It is a circle seen at an angle, so it looks like an ellipse. Return ONLY a JSON array of 8 points spread evenly right around the OUTER edge of the label/disc, as normalized [x,y] with x from left and y from top, each in 0..1: [[x,y],[x,y],...]. Trace the true rim precisely. Output only the JSON array.'
+    : 'This photo shows a vinyl record album COVER (a square printed cardboard sleeve) on a background such as a table. Return ONLY a JSON object with the four corners of the cover as normalized [x,y] (x from left, y from top, each 0..1): {"tl":[x,y],"tr":[x,y],"br":[x,y],"bl":[x,y]}. Trace the actual cover edges and exclude the background; if a clear plastic outer sleeve overhangs the cardboard, use the cardboard edge. Output only the JSON object.';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25000);
+  let data;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal: ctrl.signal,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': settings.aiKey.trim(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: settings.aiModel || 'claude-opus-5',
+        max_tokens: 1200,
+        output_config: { effort: 'low' },
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+          { type: 'text', text: prompt },
+        ] }],
+      }),
+    });
+    clearTimeout(timer);
+    if (!resp.ok) { console.error('AI crop', resp.status, await resp.text().catch(() => '')); return null; }
+    data = await resp.json();
+  } catch (e) { clearTimeout(timer); console.error('AI crop', e); return null; }
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  const json = pullJson(text);
+  if (!json) return null;
+  const inBmp = ([x, y]) => ({ x: Math.max(0, Math.min(1, x)) * bmp.width, y: Math.max(0, Math.min(1, y)) * bmp.height });
+  if (round) {
+    const arr = Array.isArray(json) ? json : json.points;
+    if (!Array.isArray(arr) || arr.length < 5) return null;
+    const e = fitEllipse(arr.filter(p => Array.isArray(p) && p.length >= 2).map(inBmp));
+    return e ? { kind: 'ellipse', ellipse: e } : null;
+  }
+  const q = ['tl', 'tr', 'br', 'bl'].map(k => Array.isArray(json[k]) ? inBmp(json[k]) : null);
+  if (q.some(p => !p)) return null;
+  return { kind: 'quad', quad: q };
+}
 function commitTap(p) {
   review.taps.push({ x: p.x, y: p.y });
   review.tapActive = null;
@@ -650,7 +744,7 @@ function updateTapPrompt() {
         : '👆 Tap the 4 corners of the sleeve';
     }
   } else {
-    $('#tapMsg').textContent = sh === 'ellipse' ? 'Save deskews it to a round crop — or tap ○ Circle'
+    $('#tapMsg').textContent = sh === 'ellipse' ? 'Drag to fit the rim, then Save (deskews round) — or ○ Circle'
       : sh === 'circle' ? 'Drag to move, drag the edge to resize'
       : 'Drag a corner to fine-tune';
   }
@@ -972,6 +1066,17 @@ function drawReview() {
     ctx.arc(e.cx * s, e.cy * s, 4.5 * review.dpr, 0, 7);
     ctx.fillStyle = '#f0a832';
     ctx.fill();
+    const ct = Math.cos(e.theta), st = Math.sin(e.theta);
+    const hs = [
+      [e.cx + e.ax * ct, e.cy + e.ax * st], [e.cx - e.ax * ct, e.cy - e.ax * st],
+      [e.cx - e.ay * st, e.cy + e.ay * ct], [e.cx + e.ay * st, e.cy - e.ay * ct],
+    ];
+    for (const [hx, hy] of hs) {
+      ctx.beginPath(); ctx.arc(hx * s, hy * s, 9 * review.dpr, 0, 7);
+      ctx.fillStyle = 'rgba(240,168,50,.55)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(hx * s, hy * s, 4 * review.dpr, 0, 7);
+      ctx.fillStyle = '#f0a832'; ctx.fill();
+    }
     drawLoupe(ctx, canvas);
     return;
   }
@@ -1054,6 +1159,23 @@ rc.addEventListener('pointerdown', e => {
     drawReview();
     return;
   }
+  if (review.shape === 'ellipse') {
+    const el = review.ellipse;
+    if (!el) return;
+    const nd = ellipseNormDist(el, px, py);
+    if (nd > 1.3) return;
+    if (nd > 0.7) {
+      review.dragging = { kind: 'e-resize', ax0: el.ax, ay0: el.ay, nd0: Math.max(0.3, nd) };
+      review.loupe = { x: px, y: py };
+    } else {
+      review.dragging = { kind: 'e-move', sx: px, sy: py, cx0: el.cx, cy0: el.cy };
+      review.loupe = null;
+    }
+    rc.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    drawReview();
+    return;
+  }
   if (review.shape === 'circle') {
     const c0 = review.circle;
     if (!c0) return;
@@ -1119,6 +1241,22 @@ rc.addEventListener('pointermove', e => {
   const w = review.bmp.width, h = review.bmp.height;
   const px = Math.max(0, Math.min(w, (e.clientX - r.left) / review.scale));
   const py = Math.max(0, Math.min(h, (e.clientY - r.top) / review.scale));
+  if (review.shape === 'ellipse') {
+    const el = review.ellipse, d = review.dragging;
+    if (!el || !d) return;
+    if (d.kind === 'e-move') {
+      el.cx = d.cx0 + (px - d.sx); el.cy = d.cy0 + (py - d.sy);
+      review.loupe = null;
+    } else {
+      const nd = ellipseNormDist({ cx: el.cx, cy: el.cy, ax: d.ax0, ay: d.ay0, theta: el.theta }, px, py);
+      const k = Math.max(0.2, nd / d.nd0);
+      el.ax = Math.max(8, d.ax0 * k);
+      el.ay = Math.max(8, d.ay0 * k);
+      review.loupe = { x: px, y: py };
+    }
+    drawReview();
+    return;
+  }
   if (review.shape === 'circle') {
     const c0 = review.circle;
     if (!c0) return;
@@ -2477,6 +2615,7 @@ $('#btnAddFolder').onclick = () => {
 function openSettings() {
   $('#inClientId').value = settings.clientId;
   $('#inApiKey').value = settings.apiKey;
+  $('#inAiKey').value = settings.aiKey || '';
   $('#inProjectNumber').value = settings.projectNumber;
   $('#inShareWith').value = settings.shareWith;
   // a built-in value is shown as the placeholder, so leaving the box empty
@@ -2496,6 +2635,7 @@ function openSettings() {
 $('#btnSaveSettings').onclick = async () => {
   settings.clientId = $('#inClientId').value.trim();
   settings.apiKey = $('#inApiKey').value.trim();
+  settings.aiKey = $('#inAiKey').value.trim();
   settings.projectNumber = $('#inProjectNumber').value.trim();
   const shareWas = cred('shareWith');
   settings.shareWith = $('#inShareWith').value.trim();
