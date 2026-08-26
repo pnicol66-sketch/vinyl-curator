@@ -14,6 +14,8 @@ $mime = @{
   '.png' = 'image/png'
   '.md' = 'text/plain; charset=utf-8'
   '.jpg' = 'image/jpeg'
+  '.wasm' = 'application/wasm'
+  '.onnx' = 'application/octet-stream'
 }
 while ($listener.IsListening) {
   try {
