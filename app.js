@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260826-124228';
+const APP_VERSION = '20260826-132718';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -273,6 +273,19 @@ async function renderShotList() {
     };
     list.appendChild(item);
   }
+  // per-album personal note (private) — its own row at the very end
+  const noteVal = (curAlbum.personalNote || '').trim();
+  const noteItem = document.createElement('button');
+  noteItem.className = 'shotitem';
+  const notePrev = noteVal
+    ? ` <em>· ${esc(noteVal.length > 26 ? noteVal.slice(0, 26) + '…' : noteVal)}</em>`
+    : ' <em>· optional · private</em>';
+  noteItem.innerHTML =
+    `<span class="thumb">📝</span>` +
+    `<span class="shotname">Personal note${notePrev}</span>` +
+    `<span class="shotstate ${noteVal ? 'done' : ''}">${noteVal ? '✓' : ''}</span>`;
+  noteItem.onclick = () => openNote();
+  list.appendChild(noteItem);
   $('#albumProgress').textContent = `${done}/${visible.length}`;
   $('#btnExport').disabled = done === 0;
 }
@@ -1627,6 +1640,28 @@ $('#btnTextSave').onclick = async () => {
   backToAlbum();
   toast('Saved ✓');
 };
+/* ---------- personal note (per album, private) ---------- */
+function openNote() {
+  stopCam();
+  freeReview();
+  stopVoice();
+  $('#inNote').value = curAlbum.personalNote || '';
+  $('#btnNoteClear').classList.toggle('hidden', !(curAlbum.personalNote || '').trim());
+  $('#btnNoteVoice').classList.toggle('hidden', !SpeechRec);
+  $('#voiceHintNote').classList.toggle('hidden', !SpeechRec);
+  show('scr-note', { title: 'Personal note', back: backToAlbum });
+}
+$('#btnNoteVoice').onclick = () => beginDictation('#inNote', '#btnNoteVoice', voiceToNote);
+$('#btnNoteClear').onclick = () => { stopVoice(); $('#inNote').value = ''; $('#btnNoteClear').classList.add('hidden'); };
+$('#btnNoteSave').onclick = async () => {
+  stopVoice();
+  let t = $('#inNote').value.trim();
+  if (t) t = t.charAt(0).toUpperCase() + t.slice(1);
+  curAlbum.personalNote = t;
+  await dbPut('albums', curAlbum);
+  backToAlbum();
+  toast(t ? 'Note saved ✓' : 'Note cleared');
+};
 /* ---------- voice dictation (matrix/runout) ---------- */
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 let speech = null;
@@ -1756,6 +1791,9 @@ function pickTranscript(r) {
 function voiceToText(s) {
   return s.replace(/\s+/g, ' ').trim().replace(/(^|\s)(\w)/g, (m, p, c) => p + c.toUpperCase());
 }
+// Free-text dictation for the personal note: keep what was said, just tidy spacing
+// (no title-casing or code-snapping — it's a sentence, not a name or a matrix code).
+function voiceToNote(s) { return String(s).replace(/\s+/g, ' ').trim(); }
 let voiceMap = voiceToMatrix;   // active mapper — set per field when dictation starts
 let voiceFieldSel = '#inShotText';  // the input/textarea dictation fills
 let voiceBtnSel = '#btnTextVoice';  // the button whose label reflects dictation state
@@ -2104,6 +2142,7 @@ async function writeAlbumManifest(folder, album) {
     artist: album.artist,
     title: album.title,
     discs: album.discs || 1,
+    personalNote: (album.personalNote || '').trim(),
     updated: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
