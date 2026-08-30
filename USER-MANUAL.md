@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 1.8 · 14 August 2026**
+**Version 1.9 · 30 August 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
@@ -8,6 +8,7 @@ Contact: pnicol66@gmail.com · Personal use by permission; please don't redistri
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.9 | 2026-08-30 | New **Vinyl Reports** menu: **Collection schedule** (one line per record, values and a total), **Researched price estimate** (a full record-by-record document), printed **Catalogue / brochure** (photo-forward 1-up/2-up/4-up pages, auto-split for big collections), and the **Shareable sheet** — a copy you can send that carries its own Reports menu, so the recipient can build the schedule, the estimate and now the **catalogue/book themselves** (record picker, style presets, their own photo access). New **Insured Value** / **Suggested Insured Value** columns with one-click seeding from researched values. Listing boilerplate moved from the supplement columns to named **listing policies** (Vinyl Sales → Manage listing policies…), and eBay descriptions gained a per-block **content picker** (Full / Brief / Off). |
 | 1.8 | 2026-08-14 | New optional **Side 1–4 Vinyl** checklist entries (numbers 22–25): a full-disc surface shot per side, cropped as a circle, appearing right after each side's Label entry. The sheet gains matching **Side N Vinyl** photo columns directly right of each Side N Label column (**Update my sheet** adds them). Album-page galleries and eBay photo exports order them beside their side's label photo. |
 | 1.7 | 2026-08-14 | Sales polish: **Discogs listing comments are now compact** — grades and matrix/runout only, and the Discogs Listing Supplement is no longer auto-appended (eBay descriptions keep theirs). **eBay titles** flag verified first pressings ("1st Press") and order the extras 1st Press → cat# → year → label → mono/stereo → grade. **Collection webpage**: Value Estimate and the sales columns join the default fields, prices show $ signs, and web addresses in cells are tappable links. |
 | 1.6 | 2026-08-12 | **Matrix/Runout rework**, app and sheet: checklist entries renamed Side N Matrix/Runout with up to **4 optional photos per side**, "Dead Wax Other" merged in (numbers 15/17/19/21 retired); sheet columns renamed **Matrix/Runout A–D** with 16 photo columns that appear as photos arrive; one-time Drive merge for older albums. New **Label Variant Hierarchy** research column. Sales upgrades: **asking-price columns** (eBay Start / Buy Now, Discogs List Price) choose Fixed Price vs Auction drafts, and **Listing Supplement** columns append your boilerplate to every listing. Pickers now hide already-processed albums. Slimmer menus with a single **Update my sheet** item for migrations. App: camera **Focus** controls, the **📁 Uploaded albums** archive with re-import from Drive, multiple upload folders in Settings. |
@@ -226,7 +227,33 @@ Both flows record what they did and when in the **Discogs Listing** and **eBay S
 
 The columns ride along when a row moves to Sold, so your sold records keep their listing prices.
 
-**Listing supplements.** The For Sale tab also has **eBay Listing Supplement** and **Discogs Listing Supplement** columns: type your standard boilerplate (shipping terms, grading notes, returns) down the column's cells — a blank cell makes a paragraph break. The eBay supplement is appended automatically to **every** eBay draft description. Since v1.7 the Discogs supplement is **not** added automatically (Discogs caps comments at 1,000 characters, so the prefill stays compact) — paste it into the comments box on the listings where you want it.
+**Listing policies.** Your standard boilerplate (grading notes, packing, shipping, returns) lives in named **listing policies**: **Vinyl Sales → Manage listing policies…** opens a card editor where each policy can be enabled for eBay, Discogs, or both. Enabled eBay policies are appended to the bottom of every eBay draft description automatically; Discogs-scoped ones are added when a Discogs listing is created (mind Discogs' 1,000-character comment cap). The eBay export dialog also has a **content picker** — per description block (pressing notes, album story, fidelity, musicians, label variant) choose Full, Brief, or Off. If your sheet still carries the old **eBay/Discogs Listing Supplement** columns, run **Vinyl Sales → Remove old supplement columns…** once — any text in them is saved as a "General" policy before the column is deleted.
+
+### The Vinyl Reports menu
+
+Turns the catalogue into documents you can print, send, or hand to a broker. Everything it makes is created **privately** in a Drive folder called **"Vinyl Curator Reports"** — nothing is shared until you share it.
+
+- **Collection schedule…** — one line per record (artist, title, label, year, format, grades, insured value) with an item count and grand total, as a Google Sheet and a PDF. Pick the records, the tabs, the sort and an optional grouping with subtotals. Records without a value go into a short "not yet valued" appendix — never silently dropped from the total.
+- **Researched price estimate…** — the full record-by-record document: pressing details, label notes, condition, the valuation with its basis and price guide, personnel, tracklists and the album story, plus a methodology note and an owner's declaration to sign.
+- **Catalogue / brochure (print)…** — a designed, photo-forward book of the collection. Pick the records and the order (artist, title, year, genre or label), choose **1, 2 or 4 albums per page**, and whether prices appear (none, asking price, or estimated value). Large selections split into parts automatically; each finished part opens in a browser tab with a **Print / Save as PDF** button (margins Default, Background graphics ON) and an **Edit text** toggle for last-minute tweaks that bake into the printed PDF.
+- **Report settings (name, currency)…** — the collection owner's name and currency symbol printed on every report.
+- **Seed suggested insured values from researched values** — fills the **Suggested Insured Value** column from the research's value estimates (it never overwrites). Type your own figure in **Insured Value** to override any record; reports use **Insured Value → Suggested → research estimate**, in that order. **Add Insured Value columns (one-time)** creates the two columns and then removes itself from the menu.
+
+### The shareable sheet (client sheet)
+
+**Vinyl Reports → Shareable sheet (recipient can re-run)…** builds a spreadsheet you can **send** — to a client, a broker, a buyer, or family — that carries its own **Reports** menu, so the recipient can produce the documents themselves from the records you chose to include:
+
+- **Make Collection schedule (Sheet + PDF)**
+- **Make Researched price estimate (Sheet + PDF)**
+- **Make catalogue / book (print PDF)** — with the same choices you have: tick the records to include (all selected by default, with a filter and select-all), pick the order, choose **Coffee-table book** (one album per page), **Lookbook** (two) or **Catalogue** (four), and whether estimated values appear. Big selections split into parts, each with its own **Open & print** button.
+
+Good to know about the file you send:
+
+- It's created privately in your **"Vinyl Curator Reports"** folder — share it (edit access) when you're ready. It opens on a friendly **Start Here** page that explains everything to the recipient.
+- The first time the recipient runs a report, Google asks them to **authorise the file** — a normal one-time consent for a personal spreadsheet. The built-in script reads only the data inside the file and writes new documents to the **recipient's own Drive**; it cannot see their other files and sends nothing anywhere.
+- **The catalogue is built from the album photographs**, so the recipient's Google account needs access to the album photo folders. A client whose collection was documented in their own Drive already owns them — it just works. A recipient without folder access gets a clear message instead; the schedule and price estimate still work for them.
+- When you create a shareable sheet, it warns if any included album has no resolvable photo folder — those records would print without photos in a catalogue.
+- The data is a **static copy** at the moment you send it: nothing the recipient does reaches back to your sheet, and later changes in your sheet don't appear in their copy (send a fresh one instead). Your **Personal Note** column never travels.
 
 ## 4. Day-to-day workflow
 
@@ -242,4 +269,4 @@ The columns ride along when a row moves to Sold, so your sold records keep their
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v1.8 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v1.9 · © 2026 pnicol66*
