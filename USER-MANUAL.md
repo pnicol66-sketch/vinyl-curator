@@ -153,7 +153,7 @@ Link… needs the **API key** and **Cloud project number** in Settings as well a
 
 1. Open the template link you were sent and click **Make a copy** — the menus and machinery travel with it.
 2. First use of any menu item: authorize the script. The **"Google hasn't verified this app"** warning is normal — Advanced → Go to … → continue.
-3. Reload the sheet; the **Vinyl Curator**, **Vinyl Research**, **Vinyl Values**, and **Vinyl Sales** menus are live.
+3. Reload the sheet; the **Vinyl Curator**, **Vinyl Research**, **Vinyl Values**, **Vinyl Sales**, and **Vinyl Reports** menus are live.
 
 Access is by permission — if you see a "not licensed" message, contact pnicol66@gmail.com.
 
@@ -235,7 +235,7 @@ Turns the catalogue into documents you can print, send, or hand to a broker. Eve
 
 - **Collection schedule…** — one line per record (artist, title, label, year, format, grades, insured value) with an item count and grand total, as a Google Sheet and a PDF. Pick the records, the tabs, the sort and an optional grouping with subtotals. Records without a value go into a short "not yet valued" appendix — never silently dropped from the total.
 - **Researched price estimate…** — the full record-by-record document: pressing details, label notes, condition, the valuation with its basis and price guide, personnel, tracklists and the album story, plus a methodology note and an owner's declaration to sign.
-- **Catalogue / brochure (print)…** — a designed, photo-forward book of the collection. Pick the records and the order (artist, title, year, genre or label), choose **1, 2 or 4 albums per page**, and whether prices appear (none, asking price, or estimated value). Large selections split into parts automatically; each finished part opens in a browser tab with a **Print / Save as PDF** button (margins Default, Background graphics ON) and an **Edit text** toggle for last-minute tweaks that bake into the printed PDF.
+- **Catalogue / brochure (print)…** — a designed, photo-forward book of the collection. Start from a preset (**Coffee-table book**, **Catalogue**, or **For-sale brochure**) and adjust anything: records (with a filter and select-all), **1, 2 or 4 albums per page**, portrait or landscape, hero-cover or equal-grid image layout, whether prices appear (none, asking price, or estimated value), the order (artist, title, year, genre, label or value), optional grouping into sections (genre, label, decade or artist — a grouped run prints its section label down the left), a title page, and Letter or A4 paper. Large selections split into parts automatically; each finished part opens in a browser tab with a **Print / Save as PDF** button (margins Default, Background graphics ON) and an **Edit text** toggle for last-minute tweaks that bake into the printed PDF.
 - **Personal notes** — every report picker has an "include personal notes" option, **off by default**: the schedule gains a Personal Note column, the estimate a Personal note section per record, and the catalogue prints the note on each record's page. Untouched, no report ever shows them.
 - **Report settings (name, currency)…** — the collection owner's name and currency symbol printed on every report.
 - **Seed suggested insured values from researched values** — fills the **Suggested Insured Value** column from the research's value estimates (it never overwrites). Type your own figure in **Insured Value** to override any record; reports use **Insured Value → Suggested → research estimate**, in that order. **Add Insured Value columns (one-time)** creates the two columns and then removes itself from the menu.
@@ -246,7 +246,7 @@ Turns the catalogue into documents you can print, send, or hand to a broker. Eve
 
 - **Make Collection schedule (Sheet + PDF)**
 - **Make Researched price estimate (Sheet + PDF)**
-- **Make catalogue / book (print PDF)** — with the same choices you have: tick the records to include (all selected by default, with a filter and select-all), pick the order, choose **Coffee-table book** (one album per page), **Lookbook** (two) or **Catalogue** (four), and whether estimated values appear. Big selections split into parts, each with its own **Open & print** button.
+- **Make catalogue / book (print PDF)** — with the same choices you have: tick the records to include (all selected by default, with a filter and select-all), choose **Coffee-table book** (one album per page), **Lookbook** (two) or **Catalogue** (four), portrait or landscape, hero-cover or equal-grid image layout, whether prices appear (not shown, asking price, or estimated value), the order and an optional grouping (genre, label, decade or artist), a title page, and Letter or A4 paper. Big selections split into parts, each with its own **Open & print** button.
 
 Good to know about the file you send:
 

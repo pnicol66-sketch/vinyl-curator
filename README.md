@@ -171,7 +171,7 @@ Budget roughly 1–4 minutes and $0.10–0.50 per album with Opus 5.
 
 ## Sharing it with another collector
 
-The whole system travels with two links — see [INSTALL.md](INSTALL.md) for the
+The whole system travels with two links — see [SETUP-GUIDE.md](SETUP-GUIDE.md) for the
 step-by-step guide a new user can follow on their own:
 
 1. **The app**: they open https://pnicol66-sketch.github.io/vinyl-curator/ on their phone

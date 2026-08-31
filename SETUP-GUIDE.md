@@ -1,4 +1,6 @@
-# Vinyl Curator — New User Install Guide
+# Vinyl Curator — Setup Guide
+
+*The phone app and your Google account, set up from scratch.*
 
 Everything below takes about 10 minutes and costs nothing to set up. You get two things:
 
@@ -7,10 +9,14 @@ Everything below takes about 10 minutes and costs nothing to set up. You get two
 - **The Google Sheet** — imports those photos into a collection catalogue, and (optionally)
   runs AI pressing research on each album: label, year, mono/stereo, pressing notes, and a
   price guide, researched with live web search and shown to you for approval before anything
-  is written.
+  is written. From there the sheet can also produce insurance schedules, price-estimate
+  documents and printed catalogues, and prepare eBay and Discogs listing drafts.
 
 Nothing is shared with anyone else: photos stay on your phone until you export them to your
 own Drive, the sheet copy is private to your Google account, and the AI runs on your own key.
+
+This guide covers setup only — for how everything works day to day, see the
+**Vinyl Curator — User Manual**.
 
 ## Part 1 — The phone app (2 minutes)
 
@@ -28,9 +34,14 @@ shows you this reminder on first run.
 Either way it then opens full-screen, with its own icon, and works offline.
 
 To save a photo set, tap **Save photos → Upload to Google Drive** on the export screen,
-   sign in with your own Google account, and allow access. A ready-made build needs no
-   other setup. The album lands in `My Drive / Vinyl Curator / <Artist>_<Album>/`, and the
-   sheet imports from that folder.
+sign in with your own Google account, and allow access. A ready-made build needs no
+other setup. The album lands in `My Drive / Vinyl Curator / <Artist>_<Album>/`, and the
+sheet imports from that folder.
+
+If your collection is being documented **for you** (a client arrangement), the first upload
+also offers to share that one folder, read-only, with the address the app was set up with —
+say yes and your photos are collected automatically from then on; say no and they stay
+where only you can see them. You stay the owner either way.
 
 ## Part 2 — Your own copy of the sheet (5 minutes, on a computer)
 
@@ -43,7 +54,9 @@ To save a photo set, tap **Save photos → Upload to Google Drive** on the expor
    - You'll see a **"Google hasn't verified this app"** warning. That's normal for personal
      scripts — click **Advanced → Go to … (unsafe)** and continue.
    - The script only asks for access to this spreadsheet and the Drive folders it manages.
-4. Reload the sheet. Both menus (**Vinyl Curator** and **Vinyl Research**) are now live.
+4. Reload the sheet. All five menus are now live: **Vinyl Curator** (import and organise),
+   **Vinyl Research** and **Vinyl Values** (AI research), **Vinyl Sales** (eBay and Discogs
+   drafts), and **Vinyl Reports** (schedules, estimates, printed catalogues).
 
 Day to day: shoot an album on your phone → export to Drive → in the sheet,
 **Vinyl Curator → Add albums to sheet** pulls the photos and typed matrix text into a new row.
@@ -65,8 +78,13 @@ for what you use — typically **$0.10–0.50 and 1–4 minutes per album**.
 ## Getting updates
 
 Your copied sheet doesn't auto-update. When the script improves, pnicol66 will send you
-the new version — paste it in (30 seconds): **Extensions → Apps Script** → select
-everything in the editor → paste the new script over it → save (💾) → reload the sheet.
+the new version — two steps, about a minute:
+
+1. **Extensions → Apps Script** → select everything in the editor → paste the new script
+   over it → save (💾) → reload the sheet.
+2. Run **Vinyl Curator → Update my sheet (after a script update)** — it adds any new
+   columns and layout changes to your tabs. Safe to run any time; it does nothing if your
+   sheet is already current.
 
 The phone app updates itself, but it asks first: when a new version is ready a bar appears
 at the bottom saying **A new version is ready** — tap **Update** and it reloads into the
