@@ -51,9 +51,9 @@ where only you can see them. You stay the owner either way.
    machinery travel with it automatically.
 3. Open your copy and click the **Vinyl Curator** menu → any item. Google will ask you to
    authorize the script:
-   - You'll see a **"Google hasn't verified this app"** warning. That's normal for personal
-     scripts — click **Advanced → Go to … (unsafe)** and continue.
-   - The script only asks for access to this spreadsheet and the Drive folders it manages.
+    - You'll see a **"Google hasn't verified this app"** warning. That's normal for personal
+      scripts — click **Advanced → Go to … (unsafe)** and continue.
+    - The script only asks for access to this spreadsheet and the Drive folders it manages.
 4. Reload the sheet. All five menus are now live: **Vinyl Curator** (import and organise),
    **Vinyl Research** and **Vinyl Values** (AI research), **Vinyl Sales** (eBay and Discogs
    drafts), and **Vinyl Reports** (schedules, estimates, printed catalogues).
