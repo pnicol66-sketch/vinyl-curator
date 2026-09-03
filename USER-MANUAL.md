@@ -164,6 +164,7 @@ Access is by permission — if you see a "not licensed" message, contact pnicol6
 - **Rotate selected photo 90°…** — click a photo cell first; rewrites the actual Drive file so research and future imports see the corrected orientation.
 - **Sort entries by artist, then title**.
 - **Move albums to For Sale / Sold / back to Collection** — moves whole rows between the three tabs.
+- **Remove an album row (duplicate)…** — removes ONE row you choose (a duplicate import, or a copy you no longer keep). It first shows the evidence for that row — Album ID, Drive folder, and the runout typed in the row beside the runout in the folder — and refuses while the row still has a live Discogs listing, an eBay item number or a Website entry. Tick "Also move its Drive folder to the Trash" to trash the folder too; that box is locked whenever another row still claims the same folder. Type REMOVE to confirm. A removed row comes back from File › Version history; a trashed folder comes back from Drive Trash for 30 days.
 - **Refresh folder tags / check duplicates**.
 - **Format sheets** — text wrap, column widths, row heights, frozen headers, on all tabs.
 - **Recalculate cover + vinyl grades (all tabs)** — see aggregates below.
