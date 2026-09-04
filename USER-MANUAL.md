@@ -1,6 +1,6 @@
 # Vinyl Curator — User Manual
 
-**Version 2.2 · 4 September 2026**
+**Version 2.3 · 4 September 2026**
 
 Contact: pnicol66@gmail.com · Personal use by permission; please don't redistribute.
 
