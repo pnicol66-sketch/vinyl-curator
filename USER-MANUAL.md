@@ -286,4 +286,4 @@ Good to know about the file you send:
 - **Camera needs https** — the app runs from its https address; if the camera is unavailable it offers gallery import instead.
 - **Import skipped a cell?** It never overwrites — clear the cell and re-run, or check the file is named `… - NN Entry Name` in the album's folder.
 
-*Vinyl Curator — User Manual v2.3 · © 2026 pnicol66*
+*Vinyl Curator — User Manual v2.4 · © 2026 pnicol66*
