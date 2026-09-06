@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260826-175152';
+const APP_VERSION = '20260906-172228';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -173,13 +173,25 @@ async function goHome() {
     const done = shots.filter(s => s.status === 'done' || s.status === 'text').length;
     const row = document.createElement('div');
     row.className = 'albumcard';
+    row.dataset.album = al.id;
+    const upText = uploadLabel(al);
     row.innerHTML =
       `<button class="al-open"><div class="al-art">${esc(al.artist)}</div>` +
       `<div class="al-title">${esc(al.title)}</div>` +
-      `<div class="al-meta">${al.discs === 2 ? '2 discs' : '1 disc'} · ${done}/${visible.length} photos</div></button>` +
-      `<button class="al-del" aria-label="Delete album">🗑</button>`;
+      `<div class="al-meta">${al.discs === 2 ? '2 discs' : '1 disc'} · ${done}/${visible.length} photos</div>` +
+      `<div class="al-up${al.upload ? ' ' + al.upload.state : ''}${upText ? '' : ' hidden'}">${esc(upText)}</div></button>` +
+      `<button class="al-retry${al.upload && al.upload.state === 'failed' ? '' : ' hidden'}" aria-label="Retry upload">↻</button>` +
+      `<button class="al-del${al.upload && al.upload.state === 'uploading' ? ' hidden' : ''}" aria-label="Delete album">🗑</button>`;
     row.querySelector('.al-open').onclick = () => openAlbum(al.id);
+    row.querySelector('.al-retry').onclick = async () => {
+      const fresh = await dbGet('albums', al.id);
+      if (!fresh || !fresh.upload) return;
+      await setUpload(fresh, { state: 'queued', error: '', queued: Date.now() });
+      pumpUploads();
+    };
     row.querySelector('.al-del').onclick = async () => {
+      const fresh = await dbGet('albums', al.id);
+      if (fresh && fresh.upload && fresh.upload.state === 'uploading') return toast('Wait for the upload to finish');
       if (!confirm(`Delete "${al.artist} — ${al.title}" and its photos from this phone?`)) return;
       for (const s of shots) await dbDel('shots', [al.id, s.shotId]);
       await dbDel('albums', al.id);
@@ -187,6 +199,7 @@ async function goHome() {
     };
     list.appendChild(row);
   }
+  refreshUploadCards();
 }
 
 /* ---------- new album ---------- */
@@ -289,14 +302,16 @@ async function renderShotList() {
   $('#albumProgress').textContent = `${done}/${visible.length}`;
   $('#btnExport').disabled = done === 0;
 }
-function baseNameFor(def) {
-  return sanitize(`${curAlbum.artist} - ${curAlbum.title} - ${pad2(def.n)} ${def.fname || def.name}`);
+// The album is a parameter (defaulting to the open one) because the upload
+// queue names files for albums that are no longer on screen.
+function baseNameFor(def, al = curAlbum) {
+  return sanitize(`${al.artist} - ${al.title} - ${pad2(def.n)} ${def.fname || def.name}`);
 }
-function filenameFor(def) {
-  return baseNameFor(def) + '.jpg';
+function filenameFor(def, al = curAlbum) {
+  return baseNameFor(def, al) + '.jpg';
 }
-function slotFilename(def, n) {
-  return `${baseNameFor(def)} ${def.letter}${n}.jpg`;
+function slotFilename(def, n, al = curAlbum) {
+  return `${baseNameFor(def, al)} ${def.letter}${n}.jpg`;
 }
 
 /* ---------- camera ---------- */
@@ -2050,34 +2065,45 @@ $('#btnVDelete').onclick = async () => {
 /* ---------- export ---------- */
 let exportItems = [];
 $('#btnExport').onclick = openExport;
-async function openExport() {
-  const shots = await shotsFor(curAlbum.id);
+// Everything an album has to send: one file per finished checklist entry (a
+// photo, or a typed matrix/runout as text) plus the deadwax photo slots. Read
+// straight from IndexedDB so the upload queue can rebuild it for an album
+// that is no longer the open one.
+async function buildExportItems(al) {
+  const shots = await shotsFor(al.id);
   const byId = Object.fromEntries(shots.map(s => [s.shotId, s]));
-  exportItems = SHOTS
-    .filter(def => def.disc <= curAlbum.discs)
+  return SHOTS
+    .filter(def => def.disc <= al.discs)
     .flatMap(def => {
       const rec = byId[def.id];
       const items = [];
       if (rec && rec.status === 'text')
-        items.push({ name: baseNameFor(def) + '.txt', blob: new Blob([rec.text + '\n'], { type: 'text/plain' }), mime: 'text/plain' });
+        items.push({ name: baseNameFor(def, al) + '.txt', blob: new Blob([rec.text + '\n'], { type: 'text/plain' }), mime: 'text/plain' });
       else if (rec && rec.status === 'done')
-        items.push({ name: filenameFor(def), blob: rec.blob, mime: 'image/jpeg' });
+        items.push({ name: filenameFor(def, al), blob: rec.blob, mime: 'image/jpeg' });
       if (def.type === 'matrix') {
         for (const n of SLOTS) {
           const sr = byId[slotId(def, n)];
-          if (sr) items.push({ name: slotFilename(def, n), blob: sr.blob, mime: 'image/jpeg' });
+          if (sr) items.push({ name: slotFilename(def, n, al), blob: sr.blob, mime: 'image/jpeg' });
         }
       }
       return items;
     });
+}
+async function openExport() {
+  exportItems = await buildExportItems(curAlbum);
   const fmtSize = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
   $('#exportList').innerHTML = exportItems
     .map(i => `<div class="exportrow"><div>${esc(i.name)}</div><span>${fmtSize(i.blob.size)}</span></div>`)
     .join('');
-  $('#exportStatus').textContent = '';
-  $('#btnDrive').textContent = cred('clientId')
-    ? 'Upload to Google Drive'
-    : 'Upload to Google Drive (needs setup — see Settings)';
+  const up = uploadActive(curAlbum);
+  $('#exportStatus').textContent = up ? uploadLabel(curAlbum) : '';
+  $('#btnDrive').disabled = !!up;
+  $('#btnDrive').textContent = up
+    ? 'Upload in progress'
+    : cred('clientId')
+      ? 'Upload to Google Drive'
+      : 'Upload to Google Drive (needs setup — see Settings)';
   const sel = $('#expFolder');
   const pre = curAlbum.driveFolderName && settings.driveFolders.includes(curAlbum.driveFolderName)
     ? curAlbum.driveFolderName : settings.driveFolder;
@@ -2439,8 +2465,12 @@ $('#btnDrive').onclick = async () => {
     return;
   }
   const btn = $('#btnDrive');
+  if (uploadActive(curAlbum)) return;
   btn.disabled = true;
   try {
+    // Only the part that needs the collector runs here: sign-in, the folder
+    // choice and its two questions. The photos themselves go up from the
+    // queue while the next record is being shot.
     st.textContent = 'Signing in to Google…';
     await getToken();
     st.textContent = 'Finding Drive folder…';
@@ -2450,29 +2480,16 @@ $('#btnDrive').onclick = async () => {
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
     const album = await resolveAlbumFolder(curAlbum, folderName, root,
       exportItems.map(i => i.name));
-    const folder = album.id;
-    let n = 0;
-    for (const item of exportItems) {
-      n++;
-      st.textContent = `Uploading ${n}/${exportItems.length}: ${item.name}`;
-      await uploadFile(folder, item.name, item.mime, item.blob);
-    }
-    // Last, so a manifest only ever describes a folder whose photos arrived.
-    st.textContent = 'Writing album details…';
-    await writeAlbumManifest(folder, curAlbum);
-    st.textContent = `Done ✓ ${exportItems.length} photos in Drive → ${importFolder} / ${album.name}`;
-    curAlbum.uploaded = Date.now();
     curAlbum.driveFolderName = importFolder;
-    curAlbum.driveFolderId = folder;
+    curAlbum.driveFolderId = album.id;
+    curAlbum.upload = {
+      state: 'queued', albumFolder: album.name, importFolder,
+      done: 0, total: exportItems.length, queued: Date.now(),
+    };
     await dbPut('albums', curAlbum);
-    if (settings.logCrops) {
-      try {
-        const cn = await syncCropLogs(t => { st.textContent = t; });
-        if (cn) toast(`+${cn} crop training example${cn === 1 ? '' : 's'} → Drive`, 3000);
-      } catch (e) { console.error('crop sync', e); }
-    }
-    toast(`Uploaded ${exportItems.length} files ✓ — album moved to “Uploaded albums”`, 3600);
+    toast(`Queued ${exportItems.length} files — uploading while you carry on`, 3200);
     goHome();
+    pumpUploads();
   } catch (e) {
     console.error(e);
     st.textContent = '';
@@ -2481,6 +2498,154 @@ $('#btnDrive').onclick = async () => {
     btn.disabled = false;
   }
 };
+
+/* ---------- upload queue ----------
+ *
+ * An album's upload record lives on the album itself (album.upload), so the
+ * home list is the queue and nothing needs a second store:
+ *   queued    -> folder resolved, waiting its turn
+ *   uploading -> files going up; done/total count
+ *   paused    -> the Google token ran out and renewing it needs a tap
+ *   failed    -> stopped with an error; retry from the home card
+ * Finishing writes the manifest LAST, then the album's uploaded stamp, exactly
+ * as the foreground upload did. The record is removed once the album is
+ * uploaded; the "Uploaded albums" archive reads the stamp, not the record.
+ *
+ * The queue drains while the app is open on any screen. A phone that locks or
+ * switches apps suspends the page; on the next open the queue resumes from
+ * where it stopped, and files that went up already are simply replaced, so an
+ * interrupted album is safe to run again.
+ */
+const UPLOAD_PARALLEL = 2;   // files in flight per album: enough to hide the round trip, not enough to starve the camera
+let uploadPumpRunning = false;
+
+// In progress or waiting; a failed album is free to be uploaded afresh.
+function uploadActive(al) {
+  return !!(al && al.upload && /^(queued|uploading|paused)$/.test(al.upload.state));
+}
+function uploadLabel(al) {
+  const u = al.upload;
+  if (!u) return '';
+  if (u.state === 'queued') return '⏳ Waiting to upload';
+  if (u.state === 'uploading') return `☁ Uploading ${u.done}/${u.total}…`;
+  if (u.state === 'paused') return '⏸ Upload paused — sign in below to continue';
+  if (u.state === 'failed') return '⚠ Upload failed — ' + (u.error || 'tap ↻ to retry');
+  return '';
+}
+// A token with less than two minutes left is not worth starting a file on:
+// renewing one opens Google's sign-in, which only a tap may do.
+function tokenFresh() {
+  return !!(tokenInfo.token && Date.now() < tokenInfo.exp - 120000);
+}
+async function uploadQueue() {
+  return (await dbAll('albums'))
+    .filter(a => a.upload && (a.upload.state === 'queued' || a.upload.state === 'uploading' || a.upload.state === 'paused'))
+    .sort((a, b) => (a.upload.queued || 0) - (b.upload.queued || 0));
+}
+async function setUpload(al, patch) {
+  Object.assign(al.upload, patch);
+  await dbPut('albums', al);
+  if (curAlbum && curAlbum.id === al.id) curAlbum.upload = al.upload;
+  refreshUploadCards();
+}
+async function pumpUploads() {
+  if (uploadPumpRunning) return;
+  uploadPumpRunning = true;
+  try {
+    for (;;) {
+      const queue = await uploadQueue();
+      if (!queue.length) break;
+      if (!tokenFresh()) {
+        for (const al of queue) if (al.upload.state !== 'paused') await setUpload(al, { state: 'paused' });
+        refreshUploadCards();
+        break;
+      }
+      const al = queue[0];
+      await uploadAlbum(al);
+      if (al.upload && al.upload.state === 'paused') break;
+    }
+    if (settings.logCrops && tokenFresh()) {
+      try {
+        const cn = await syncCropLogs(null);
+        if (cn) toast(`+${cn} crop training example${cn === 1 ? '' : 's'} → Drive`, 3000);
+      } catch (e) { console.error('crop sync', e); }
+    }
+  } finally {
+    uploadPumpRunning = false;
+    refreshUploadCards();
+  }
+}
+async function uploadAlbum(al) {
+  const folder = al.driveFolderId;
+  try {
+    const items = await buildExportItems(al);
+    if (!items.length) throw new Error('Nothing to upload — no photos or text saved');
+    await setUpload(al, { state: 'uploading', done: 0, total: items.length, error: '' });
+    let next = 0, failed = null, paused = false;
+    const worker = async () => {
+      while (next < items.length && !failed && !paused) {
+        if (!tokenFresh()) { paused = true; break; }
+        const item = items[next++];
+        try {
+          await uploadFile(folder, item.name, item.mime, item.blob);
+          await setUpload(al, { done: al.upload.done + 1 });
+        } catch (e) { failed = e; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, items.length) }, worker));
+    if (failed) throw failed;
+    if (paused) { await setUpload(al, { state: 'paused' }); return; }
+    // Last, so a manifest only ever describes a folder whose photos arrived.
+    await writeAlbumManifest(folder, al);
+    al.uploaded = Date.now();
+    delete al.upload;
+    await dbPut('albums', al);
+    if (curAlbum && curAlbum.id === al.id) curAlbum = al;
+    toast(`Uploaded ${al.artist} — ${al.title} ✓ (${items.length} files)`, 3600);
+    if ($('#scr-home').classList.contains('active')) goHome();
+  } catch (e) {
+    console.error('upload', al.id, e);
+    const msg = String(e && e.message || e);
+    // A refused or cancelled sign-in mid-run is a pause, not a failure.
+    if (/sign-in|token|401/i.test(msg)) { await setUpload(al, { state: 'paused' }); return; }
+    await setUpload(al, { state: 'failed', error: msg.slice(0, 120) });
+  }
+}
+// Repaint the status line on every home card that carries an upload record,
+// without rebuilding the list (which would re-read every album's photos).
+function refreshUploadCards() {
+  if (!$('#scr-home').classList.contains('active')) return;
+  (async () => {
+    const albums = await dbAll('albums');
+    const byId = Object.fromEntries(albums.map(a => [a.id, a]));
+    $$('#albumList .albumcard[data-album]').forEach(card => {
+      const al = byId[card.dataset.album];
+      const line = card.querySelector('.al-up');
+      if (!al || !line) return;
+      const text = uploadLabel(al);
+      line.textContent = text;
+      line.className = 'al-up' + (al.upload ? ' ' + al.upload.state : '');
+      line.classList.toggle('hidden', !text);
+      card.querySelector('.al-del').classList.toggle('hidden', !!(al.upload && al.upload.state === 'uploading'));
+      card.querySelector('.al-retry').classList.toggle('hidden', !(al.upload && al.upload.state === 'failed'));
+    });
+    const waiting = albums.filter(a => a.upload && a.upload.state === 'paused').length;
+    const btn = $('#btnUploadSignin');
+    btn.classList.toggle('hidden', !waiting);
+    btn.textContent = `Sign in to continue ${waiting} upload${waiting === 1 ? '' : 's'}`;
+  })();
+}
+$('#btnUploadSignin').onclick = async () => {
+  try {
+    await getToken();                       // a tap: Google's sign-in may open
+    for (const al of await uploadQueue())
+      if (al.upload.state === 'paused') await setUpload(al, { state: 'queued' });
+    pumpUploads();
+  } catch (e) { toast(e.message, 4000); }
+};
+// Resume on open and on every return to the foreground; without a fresh token
+// the pump marks the albums paused and the home screen offers the sign-in.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pumpUploads(); });
 
 /* ---------- uploaded albums (Drive archive) ---------- */
 let arcUrls = [];
@@ -3059,5 +3224,6 @@ async function migrateRunout() {
   initServiceWorker();
   showVersion();
   maybeCoachIosInstall().catch(() => {});
-  goHome();
+  await goHome();
+  pumpUploads();   // an interrupted queue: no token yet, so this marks it paused and shows the sign-in
 })();
