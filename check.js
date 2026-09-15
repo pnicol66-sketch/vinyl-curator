@@ -211,7 +211,7 @@ async function openCheck(chk) {
   }
   curCheck = chk;
   if (chk.stage === 'read' && chk.read) return openCheckRead(chk);
-  if (chk.stage === 'quick' || chk.stage === 'full' || chk.stage === 'done') return openCheckResult(chk);
+  if (chk.stage === 'quick' || chk.stage === 'full' || chk.stage === 'done') { openCheckResult(chk); if (checkTokenFresh()) writeCheckRow(chk); return; }
   $('#inCheckAsking').value = chk.asking || '';
   $('#inCheckShipping').value = chk.shipping || '';
   $('#inCheckText').value = chk.text || '';
@@ -346,6 +346,24 @@ async function runCheckQuick(chk) {
   chk.quick = quick; chk.stage = 'quick';
   await putCheck(chk);
   openCheckResult(chk);
+  writeCheckRow(chk);
+}
+
+// The row on the appraiser's sheet (and its mirror) is written after the
+// verdict is on screen; the full check waits for it, the client does not.
+const rowWrites = {};
+async function writeCheckRow(chk) {
+  if (!chk.quick || chk.quick.key || rowWrites[chk.id]) return;
+  rowWrites[chk.id] = true;
+  try {
+    const r = await checkRun(chk, 'row', {});
+    const q = r.answer ? r.answer.quick : (r.status && r.status.quick);
+    if (q && q.key) { chk.quick = Object.assign(chk.quick, q); await putCheck(chk); }
+    if (curCheck && curCheck.id === chk.id && $('#scr-checkresult').classList.contains('active')) renderCheckFull(chk);
+  } catch (e) {
+    console.error('row', e);
+    if (curCheck && curCheck.id === chk.id) $('#checkFullStage').textContent = 'The row could not be written: ' + (e.message || e);
+  } finally { delete rowWrites[chk.id]; }
 }
 
 /* ---------- the result ---------- */
@@ -381,10 +399,13 @@ function renderCheckFull(chk) {
   const f = chk.full || null, box = $('#checkFullBox');
   const btn = $('#btnCheckFull');
   if (!f) {
-    btn.classList.remove('hidden'); btn.disabled = false; btn.textContent = 'Full check (pressing, condition, value)';
+    const rowReady = !!(chk.quick && chk.quick.key);
+    btn.classList.remove('hidden'); btn.disabled = !rowReady;
+    btn.textContent = rowReady ? 'Full check (pressing, condition, value)' : 'Full check - preparing the row…';
     box.innerHTML = '';
     $('#checkFullStage').textContent = '';
     $('#btnCheckResume').classList.add('hidden');
+    if (!rowReady && checkTokenFresh()) writeCheckRow(chk);
     return;
   }
   if (f.stage !== 'done') {
