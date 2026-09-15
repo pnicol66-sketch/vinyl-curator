@@ -126,13 +126,19 @@ async function checkRun(chk, op, extra, onProgress) {
   const seq = Date.now();
   const sentAt = Date.now();
   let own = null, ownDone = false;
-  checkPost(chk, op, Object.assign({ seq }, extra || {})).then(j => { own = j; ownDone = true; }).catch(e => { own = e; ownDone = true; });
+  const ownP = checkPost(chk, op, Object.assign({ seq }, extra || {})).then(j => { own = j; ownDone = true; }).catch(e => { own = e; ownDone = true; });
+  // The op's own answer wins the moment it lands; a status call that hangs
+  // (they can take 20-30 s when Google is slow) never delays it.
+  const race = p => (ownDone ? p : Promise.race([p, ownP.then(() => 'own')]));
   for (;;) {
-    await sleep(CHECK_POLL_MS);
+    await race(sleep(CHECK_POLL_MS));
     if (ownDone && own instanceof Error) throw own;
     if (ownDone && own && own.ok) return { answer: own, status: null };
     let st = null;
-    try { st = await checkPost(chk, 'status', {}); } catch (e) { if (/belongs|start again|not set up|sign in|expired/i.test(String(e.message))) throw e; st = null; }
+    try { st = await race(checkPost(chk, 'status', {})); } catch (e) { if (/belongs|start again|not set up|sign in|expired/i.test(String(e.message))) throw e; st = null; }
+    if (ownDone && own instanceof Error) throw own;
+    if (ownDone && own && own.ok) return { answer: own, status: null };
+    if (st === 'own') st = null;
     if (st) {
       if (st.lastError && st.lastError.op === op && (!st.busy) && st.doneSeq === seq) throw new Error(st.lastError.text);
       if (st.doneSeq === seq && !st.busy) return { answer: null, status: st };
