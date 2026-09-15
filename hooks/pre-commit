@@ -11,7 +11,7 @@
 changed=$(git diff --cached --name-only)
 
 case "$changed" in
-  *index.html*|*app.js*|*detect.js*)
+  *index.html*|*app.js*|*check.js*|*detect.js*)
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./bump-version.ps1 || exit 1
     git add sw.js app.js
     ;;
