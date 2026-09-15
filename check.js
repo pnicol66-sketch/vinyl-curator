@@ -7,6 +7,10 @@
  *
  * Every call carries a check id the phone made up, so a dropped connection
  * in a shop is retried with the same id and never creates a second record.
+ * The long steps are sent once and then WATCHED through short status
+ * calls: the sheet's answer to a long call is often lost on the way back
+ * (Google serves a "Sorry, unable to open the file" page instead), while
+ * the work itself completes. A short call almost always comes back.
  */
 
 const CHECK_TAGS = [
@@ -22,7 +26,9 @@ const CHECK_TAGS = [
 ];
 const CHECK_MAX_EDGE = 1600;
 const CHECK_JPEG_Q = 0.85;
-const CHECK_RETRIES = 6;     // a page instead of an answer is common enough on a long call
+const CHECK_SHORT_RETRIES = 4;   // a short call that comes back as a page is simply sent again
+const CHECK_POLL_MS = 6000;      // how often a long step is looked in on
+const CHECK_LONG_LIMIT_MS = 7 * 60 * 1000;   // past the sheet's own six-minute cap: the step is lost
 const CHECK_STEP_CAP = 40;
 
 let curCheck = null;          // the check being shown
@@ -81,31 +87,59 @@ function requestCheckToken() {
   });
 }
 
-/* ---------- the call ---------- */
+/* ---------- the calls ---------- */
 
-// One operation against the appraiser's sheet. A non-JSON answer (Google
-// occasionally answers a long call with a page) or a network drop is
-// retried with the same check id: the sheet answers a repeat from what it
-// already did.
+// One POST. Resolves to the JSON answer, or to null when the answer came
+// back as a page (the sheet may well have done the work).
+async function checkPost(chk, op, extra) {
+  const body = Object.assign({ op, check: chk.id, token: checkTok.token, folderId: chk.folderId || '', aiKey: String(settings.checkAiKey || '').trim() }, extra || {});
+  const r = await fetch(checkUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) });
+  const txt = await r.text();
+  let j = null;
+  try { j = JSON.parse(txt); } catch (e) { j = null; }
+  if (j && !j.ok) throw new Error(j.error || 'The sheet refused the request');
+  return j;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// A short operation: sent again when the answer was lost or the network dropped.
 async function checkCall(chk, op, extra) {
   let last = null;
-  for (let attempt = 0; attempt < CHECK_RETRIES; attempt++) {
-    if (attempt) await new Promise(r => setTimeout(r, 1500 * attempt));
+  for (let attempt = 0; attempt < CHECK_SHORT_RETRIES; attempt++) {
+    if (attempt) await sleep(1500 * attempt);
     try {
-      const body = Object.assign({ op, check: chk.id, token: checkTok.token, folderId: chk.folderId || '', aiKey: String(settings.checkAiKey || '').trim() }, extra || {});
-      const r = await fetch(checkUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) });
-      const txt = await r.text();
-      let j = null;
-      try { j = JSON.parse(txt); } catch (e) { j = null; }
-      if (!j) { last = new Error('The sheet answered with a page instead of an answer ' + CHECK_RETRIES + ' times - tap Check to carry on from where it got to'); continue; }
-      if (!j.ok) throw new Error(j.error || 'The sheet refused the request');
-      return j;
+      const j = await checkPost(chk, op, extra);
+      if (j) return j;
+      last = new Error('The sheet\'s answer did not arrive ' + CHECK_SHORT_RETRIES + ' times - tap again to carry on');
     } catch (e) {
-      if (/refused|not set up|sign in|expired|malformed|Unknown operation|key|needed|first/i.test(String(e.message))) throw e;
+      if (/refused|not set up|sign in|expired|malformed|Unknown operation|key|needed|first|belongs|start again/i.test(String(e.message))) throw e;
       last = e;
     }
   }
   throw last || new Error('No answer');
+}
+
+// A long operation (the read, the quick check, the full check, a research
+// step): sent once with a sequence number, then watched through status
+// calls until the sheet reports that number finished, or an error for it.
+async function checkRun(chk, op, extra, onProgress) {
+  const seq = Date.now();
+  const sentAt = Date.now();
+  let own = null, ownDone = false;
+  checkPost(chk, op, Object.assign({ seq }, extra || {})).then(j => { own = j; ownDone = true; }).catch(e => { own = e; ownDone = true; });
+  for (;;) {
+    await sleep(CHECK_POLL_MS);
+    if (ownDone && own instanceof Error) throw own;
+    if (ownDone && own && own.ok) return { answer: own, status: null };
+    let st = null;
+    try { st = await checkPost(chk, 'status', {}); } catch (e) { if (/belongs|start again|not set up|sign in|expired/i.test(String(e.message))) throw e; st = null; }
+    if (st) {
+      if (st.lastError && st.lastError.op === op && (!st.busy) && st.doneSeq === seq) throw new Error(st.lastError.text);
+      if (st.doneSeq === seq && !st.busy) return { answer: null, status: st };
+      if (onProgress) onProgress(st);
+    }
+    if (Date.now() - sentAt > CHECK_LONG_LIMIT_MS) throw new Error('The sheet did not finish that step - tap again to carry on');
+  }
 }
 
 /* ---------- pictures ---------- */
@@ -126,6 +160,32 @@ function blobToB64(blob) {
     fr.onerror = () => rej(fr.error);
     fr.readAsDataURL(blob);
   });
+}
+
+// Every unsent picture in one call; when the answer is lost, the status
+// call says which numbers landed and the rest go again.
+async function sendPictures(chk, onStage) {
+  for (let round = 0; round < 4; round++) {
+    const pending = Object.values(chk.pics).filter(p => !p.sent).sort((a, b) => (a.tag === 'front' ? -1 : b.tag === 'front' ? 1 : a.n - b.n));
+    if (!pending.length) return;
+    onStage(`Sending ${pending.length} picture${pending.length === 1 ? '' : 's'}…`);
+    const list = [];
+    for (const p of pending) list.push({ n: p.n, tag: p.tag, b64: await blobToB64(p.blob) });
+    let j = null;
+    try { j = await checkPost(chk, 'pictures', { pictures: list }); }
+    catch (e) { if (/already has its row|belongs|start again|sign in|expired/i.test(String(e.message))) throw e; j = null; }
+    let landed = [];
+    if (j && j.pictures) landed = j.pictures.map(p => p.n);
+    else {
+      onStage('Checking which pictures arrived…');
+      await sleep(2000);
+      try { const st = await checkCall(chk, 'status', {}); landed = st.sent || []; } catch (e) { landed = []; }
+    }
+    for (const p of Object.values(chk.pics)) if (landed.includes(p.n)) p.sent = true;
+    await putCheck(chk);
+  }
+  const left = Object.values(chk.pics).filter(p => !p.sent).length;
+  if (left) throw new Error(`${left} picture${left === 1 ? '' : 's'} did not arrive - tap Check to send again`);
 }
 
 /* ---------- storage ---------- */
@@ -225,20 +285,13 @@ async function runCheckRead(chk) {
     const b = await checkCall(chk, 'begin');
     chk.folderId = b.folderId; await putCheck(chk);
   }
-  const order = Object.values(chk.pics).sort((a, b) => (a.tag === 'front' ? -1 : b.tag === 'front' ? 1 : a.n - b.n));
-  let i = 0;
-  for (const pic of order) {
-    i++;
-    if (pic.sent) continue;
-    setCheckStage(`Sending picture ${i} of ${order.length}…`);
-    const b64 = await blobToB64(pic.blob);
-    const r = await checkCall(chk, 'picture', { n: pic.n, tag: pic.tag, b64 });
-    pic.sent = true; pic.landed = r.bytes;
-    await putCheck(chk);
-  }
+  await sendPictures(chk, setCheckStage);
   setCheckStage('Reading the pictures… (up to a minute)');
-  const rd = await checkCall(chk, 'read', { text: chk.text, link: '' });
-  chk.read = rd.read; chk.stage = 'read';
+  const t0 = Date.now();
+  const r = await checkRun(chk, 'read', { text: chk.text, link: '' }, st => setCheckStage(`Reading the pictures… ${Math.round((Date.now() - t0) / 1000)} s`));
+  const read = r.answer ? r.answer.read : (r.status && r.status.read);
+  if (!read) throw new Error('The read did not come back - tap Check to try again');
+  chk.read = read; chk.stage = 'read';
   await putCheck(chk);
   setCheckStage('');
   openCheckRead(chk);
@@ -285,9 +338,12 @@ $('#btnCheckConfirm').onclick = () => {
 
 async function runCheckQuick(chk) {
   $('#btnCheckConfirm').disabled = true;
+  const t0 = Date.now();
   $('#checkReadStage').textContent = 'Looking up the sales history… (about a minute)';
-  const q = await checkCall(chk, 'quick', { fields: chk.fields, extra: '', link: '' });
-  chk.quick = q.quick; chk.stage = 'quick';
+  const r = await checkRun(chk, 'quick', { fields: chk.fields, extra: '', link: '' }, () => { $('#checkReadStage').textContent = `Looking up the sales history… ${Math.round((Date.now() - t0) / 1000)} s`; });
+  const quick = r.answer ? r.answer.quick : (r.status && r.status.quick);
+  if (!quick) throw new Error('The answer did not come back - tap Confirm to try again');
+  chk.quick = quick; chk.stage = 'quick';
   await putCheck(chk);
   openCheckResult(chk);
 }
@@ -328,11 +384,12 @@ function renderCheckFull(chk) {
     btn.classList.remove('hidden'); btn.disabled = false; btn.textContent = 'Full check (pressing, condition, value)';
     box.innerHTML = '';
     $('#checkFullStage').textContent = '';
+    $('#btnCheckResume').classList.add('hidden');
     return;
   }
   if (f.stage !== 'done') {
     btn.classList.add('hidden');
-    $('#checkFullStage').textContent = f.paused ? 'Full check paused - sign in to continue' :
+    $('#checkFullStage').textContent = f.paused ? ('Full check paused' + (f.error ? ': ' + f.error : ' - sign in to continue')) :
       (f.stage === 'value' ? 'Working out the value…' : `Researching the pressing… round ${f.round || 0}${f.rounds ? ' of up to ' + f.rounds : ''}`);
     $('#btnCheckResume').classList.toggle('hidden', !f.paused);
     box.innerHTML = '';
@@ -348,14 +405,21 @@ function renderCheckFull(chk) {
     (r.verdict && r.verdict.text ? `<div class="v-row"><b>Verdict</b><span>${esc(r.verdict.text)}</span></div>` : '');
 }
 
+function applyFullStatus(chk, fv) {
+  if (!fv) return;
+  chk.full = Object.assign(chk.full || {}, { stage: fv.stage, round: fv.round, rounds: fv.rounds, result: fv.result || null, research: fv.research || null, paused: false, error: '' });
+  if (fv.done) chk.stage = 'done';
+}
+
 $('#btnCheckFull').onclick = () => {
   const chk = curCheck;
   const go = async () => {
     $('#btnCheckFull').disabled = true;
     $('#checkFullStage').textContent = 'Starting the full check…';
     try {
-      const f = await checkCall(chk, 'full', {});
-      chk.full = { stage: f.full.stage, round: f.full.round, rounds: f.full.rounds, paused: false };
+      const r = await checkRun(chk, 'full', {});
+      applyFullStatus(chk, r.answer ? r.answer.full : (r.status && r.status.full));
+      if (!chk.full) throw new Error('The full check did not start - tap again');
       chk.stage = 'full';
       await putCheck(chk);
       renderCheckFull(chk);
@@ -366,7 +430,10 @@ $('#btnCheckFull').onclick = () => {
   else requestCheckToken().then(go).catch(e => { $('#checkFullStage').textContent = 'Sign-in needed: ' + (e.message || e); });
 };
 $('#btnCheckResume').onclick = () => {
-  requestCheckToken().then(() => pumpChecks()).catch(e => toast(e.message || String(e)));
+  const chk = curCheck;
+  const go = () => { if (chk && chk.full) { chk.full.paused = false; putCheck(chk); } pumpChecks(); };
+  if (checkTokenFresh()) go();
+  else requestCheckToken().then(go).catch(e => toast(e.message || String(e)));
 };
 $('#btnCheckNew').onclick = () => openCheck(null);
 
@@ -377,7 +444,7 @@ async function pumpChecks() {
   checkPumpRunning = true;
   try {
     for (;;) {
-      const pending = (await allChecks()).filter(c => c.full && c.full.stage !== 'done');
+      const pending = (await allChecks()).filter(c => c.full && c.full.stage !== 'done' && !c.full.paused);
       if (!pending.length) break;
       if (!checkTokenFresh()) {
         for (const c of pending) { c.full.paused = true; await putCheck(c); }
@@ -388,15 +455,14 @@ async function pumpChecks() {
       let steps = 0, stuck = false;
       while (chk.full.stage !== 'done' && steps < CHECK_STEP_CAP && checkTokenFresh()) {
         steps++;
-        let s;
-        try { s = await checkCall(chk, 'step', {}); }
-        catch (e) { chk.full.paused = true; chk.full.error = e.message || String(e); await putCheck(chk); stuck = true; break; }
-        chk.full = Object.assign(chk.full, { stage: s.full.stage, round: s.full.round, rounds: s.full.rounds, result: s.full.result || null, research: s.full.research || null, paused: false, error: '' });
-        if (s.done) chk.stage = 'done';
+        try {
+          const r = await checkRun(chk, 'step', {}, st => { applyFullStatus(chk, st.full); if (curCheck && curCheck.id === chk.id && $('#scr-checkresult').classList.contains('active')) renderCheckFull(chk); });
+          applyFullStatus(chk, r.answer ? r.answer.full : (r.status && r.status.full));
+        } catch (e) { chk.full.paused = true; chk.full.error = e.message || String(e); await putCheck(chk); stuck = true; break; }
         await putCheck(chk);
         if (curCheck && curCheck.id === chk.id) { curCheck = chk; if ($('#scr-checkresult').classList.contains('active')) renderCheckFull(chk); }
       }
-      if (stuck) { toast('Full check paused: ' + (chk.full.error || ''), 3600); break; }
+      if (stuck) { toast('Full check paused: ' + (chk.full.error || ''), 3600); if (curCheck && curCheck.id === chk.id) renderCheckFull(chk); break; }
       if (chk.full.stage === 'done') toast(`Full check done: ${chk.quick ? chk.quick.name : ''}`, 3600);
       if (chk.full.stage !== 'done') break;
     }
@@ -418,7 +484,7 @@ async function openCheckList() {
     row.className = 'albumcard';
     row.innerHTML = `<button class="al-open"><div class="al-art">${esc(name)}</div>` +
       `<div class="al-title">${v ? esc(LEVEL_TEXT[v.level] || v.level) + (c.asking ? ' · asking $' + esc(c.asking) : '') : esc(c.stage === 'read' ? 'Read, not yet checked' : 'Photos taken')}` +
-      (c.full ? (c.full.stage === 'done' ? ' · full check done' : ' · full check running') : '') + `</div>` +
+      (c.full ? (c.full.stage === 'done' ? ' · full check done' : (c.full.paused ? ' · full check paused' : ' · full check running')) : '') + `</div>` +
       `<div class="al-meta">${esc(when)}</div></button>` +
       `<button class="al-del" aria-label="Delete check">🗑</button>`;
     row.querySelector('.al-open').onclick = () => openCheck(c);
