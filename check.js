@@ -22,7 +22,7 @@ const CHECK_TAGS = [
 ];
 const CHECK_MAX_EDGE = 1600;
 const CHECK_JPEG_Q = 0.85;
-const CHECK_RETRIES = 3;
+const CHECK_RETRIES = 6;     // a page instead of an answer is common enough on a long call
 const CHECK_STEP_CAP = 40;
 
 let curCheck = null;          // the check being shown
@@ -97,7 +97,7 @@ async function checkCall(chk, op, extra) {
       const txt = await r.text();
       let j = null;
       try { j = JSON.parse(txt); } catch (e) { j = null; }
-      if (!j) { last = new Error('The sheet did not answer properly - retrying'); continue; }
+      if (!j) { last = new Error('The sheet answered with a page instead of an answer ' + CHECK_RETRIES + ' times - tap Check to carry on from where it got to'); continue; }
       if (!j.ok) throw new Error(j.error || 'The sheet refused the request');
       return j;
     } catch (e) {
