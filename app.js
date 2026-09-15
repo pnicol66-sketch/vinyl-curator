@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260906-172228';
+const APP_VERSION = '20260915-154101';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -60,7 +60,7 @@ const TIPS = {
 let _db = null;
 function openDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('vinylsnap', 2);
+    const r = indexedDB.open('vinylsnap', 3);
     r.onupgradeneeded = () => {
       const d = r.result;
       if (!d.objectStoreNames.contains('albums')) d.createObjectStore('albums', { keyPath: 'id' });
@@ -69,6 +69,8 @@ function openDB() {
       // crop training data: original photo + the crop geometry you set, queued
       // for upload to a dedicated Drive folder (owner opt-in)
       if (!d.objectStoreNames.contains('croplog')) d.createObjectStore('croplog', { keyPath: 'id' });
+      // record checks made with the appraiser (photos, the read, the answer)
+      if (!d.objectStoreNames.contains('checks')) d.createObjectStore('checks', { keyPath: 'id' });
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);

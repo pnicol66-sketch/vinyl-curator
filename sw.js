@@ -1,10 +1,10 @@
 'use strict';
-const CACHE = 'vinylcurator-20260906-172228';
+const CACHE = 'vinylcurator-20260915-154101';
 // ORT runtime + model (~15 MB) in their own cache that survives version bumps,
 // so an app update never re-downloads them.
 const MODELCACHE = 'vinylcurator-models-v1';
 const ASSETS = [
-  './', './index.html', './app.js', './detect.js', './manifest.webmanifest',
+  './', './index.html', './app.js', './check.js', './detect.js', './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './icon-512-maskable.png',
   './apple-touch-icon.png'
 ];

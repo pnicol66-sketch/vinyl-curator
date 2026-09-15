@@ -273,6 +273,34 @@ details summary { font-weight: 600; font-size: 14.5px; }
 details ol { padding-left: 20px; color: var(--dim); font-size: 13.5px; line-height: 1.55; }
 details a { color: var(--accent); }
 h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 26px 0 8px; }
+/* check a record */
+#checkTiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.checktile {
+  aspect-ratio: 1; border-radius: 12px; border: 1px dashed var(--line); background: var(--card);
+  color: var(--dim); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 6px; overflow: hidden; position: relative; font-size: 12px; text-align: center;
+}
+.checktile.need { border-color: var(--accent); color: var(--text); }
+.checktile.filled { border-style: solid; border-color: #6fd97e; color: #6fd97e; }
+.checktile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .55; }
+.checktile .ct-lbl { position: relative; font-weight: 600; line-height: 1.2; }
+.checktile .ct-lbl em { font-style: normal; font-weight: 400; color: var(--dim); }
+.checktile .ct-ico { font-size: 22px; }
+.checktile .ct-tip { font-size: 10.5px; color: var(--dim); }
+#checkNeed, #checkStage, #checkReadStage, #checkFullStage { color: var(--dim); font-size: 13.5px; min-height: 20px; margin: 10px 0; }
+#checkStage.err { color: #ff7b6b; }
+.verdict { border-radius: 14px; padding: 16px; border: 1px solid var(--line); background: var(--card); }
+.verdict .v-level { font-size: 22px; font-weight: 800; letter-spacing: .04em; }
+.verdict .v-name { color: var(--dim); font-size: 14px; margin-top: 4px; }
+.verdict .v-text { font-size: 15px; line-height: 1.4; margin-top: 10px; }
+.verdict.green { border-color: #3f8f4c; } .verdict.green .v-level { color: #6fd97e; }
+.verdict.amber { border-color: #9a7a1f; } .verdict.amber .v-level { color: #e0b04a; }
+.verdict.red { border-color: #8f3f3f; } .verdict.red .v-level { color: #ff7b6b; }
+.verdict.grey .v-level { color: var(--dim); }
+#checkSummary { color: var(--dim); font-size: 13.5px; margin: 12px 0 6px; line-height: 1.45; }
+.v-line { font-size: 12.5px; color: var(--dim); padding: 6px 0; border-bottom: 1px solid var(--line); }
+.v-row { display: flex; flex-direction: column; gap: 3px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
+.v-row b { font-size: 12.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
 /* toast */
 #toast {
   position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -300,6 +328,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   <div id="albumList"></div>
   <div class="stack">
     <button id="btnNew" class="primary">＋ New Album</button>
+    <button id="btnCheckHome" class="secondary">🔎 Check a record before you buy</button>
     <button id="btnUploadSignin" class="secondary hidden">Sign in to continue uploads</button>
     <button id="btnArchive" class="secondary hidden">📁 Uploaded albums</button>
     <button id="btnInstall" class="secondary hidden">Install app on this phone</button>
@@ -458,8 +487,81 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   <div id="arcViewName"></div>
 </section>
 
+
+<section id="scr-checklist">
+  <div id="checkList"></div>
+  <div class="stack">
+    <button id="btnCheckStart" class="primary">＋ New check</button>
+  </div>
+  <p class="hint" style="margin-top:14px">Two photos - the front cover and a label - go to your appraiser's sheet, which reads the record off them, looks up its sales history and tells you whether the asking price is reasonable. More photos make the answer surer.</p>
+</section>
+
+<section id="scr-check">
+  <div id="checkTiles"></div>
+  <input type="file" id="checkFile" accept="image/*" capture="environment" class="hidden">
+  <div id="checkNeed"></div>
+  <label class="field" for="inCheckAsking">Asking price</label>
+  <input type="text" id="inCheckAsking" inputmode="decimal" autocomplete="off" placeholder="e.g. 25">
+  <label class="field">Where</label>
+  <div class="radio-row">
+    <label><input type="radio" name="checkKind" value="shelf" checked><span>In a shop</span></label>
+    <label><input type="radio" name="checkKind" value="fixed"><span>Listing</span></label>
+    <label><input type="radio" name="checkKind" value="auction"><span>Auction</span></label>
+  </div>
+  <label class="field" for="inCheckShipping">Shipping <span class="lbl-opt">- if it is a listing</span></label>
+  <input type="text" id="inCheckShipping" inputmode="decimal" autocomplete="off" placeholder="0">
+  <label class="field" for="inCheckText">Anything the seller says <span class="lbl-opt">- optional</span></label>
+  <textarea id="inCheckText" style="min-height:70px" placeholder="e.g. sticker says original, plays fine"></textarea>
+  <div id="checkStage"></div>
+  <button id="btnCheckGo" class="primary" disabled>Check</button>
+</section>
+
+<section id="scr-checkread">
+  <p class="hint" style="margin-top:4px">This is what was read off your photos. Fix anything that is wrong and add what you know, then confirm.</p>
+  <div id="checkReadWarn"></div>
+  <div id="checkReadFields"></div>
+  <div id="checkReadStage"></div>
+  <button id="btnCheckConfirm" class="primary">Confirm and check the price</button>
+</section>
+
+<section id="scr-checkresult">
+  <div id="checkVerdict" class="verdict grey"></div>
+  <div id="checkSummary"></div>
+  <div id="checkLines"></div>
+  <div style="height:16px"></div>
+  <div id="checkFullStage"></div>
+  <div id="checkFullBox"></div>
+  <div class="stack" style="margin-top:14px">
+    <button id="btnCheckFull" class="primary">Full check (pressing, condition, value)</button>
+    <button id="btnCheckResume" class="secondary hidden">Sign in to continue the full check</button>
+    <button id="btnCheckNew" class="secondary">＋ New check</button>
+  </div>
+  <p class="hint" style="margin-top:14px">The full check takes a few minutes and runs while the app is open; close it and it carries on next time. The row on your appraiser's sheet updates when it finishes.</p>
+</section>
+
 <section id="scr-settings">
-  <h2 class="sect" style="margin-top:4px">Google Drive direct upload (optional)</h2>
+  <h2 class="sect" style="margin-top:4px">Check a record - with your appraiser</h2>
+  <p class="hint" style="margin-bottom:10px">Your appraiser gives you a check address; your photos go there and the answer comes back. Three things to set up, once.</p>
+  <details style="margin-top:10px" open>
+    <summary>Step by step</summary>
+    <ol>
+      <li><b>The check address.</b> Ask your appraiser for it - a long link ending in <code>/exec</code>. Paste it below and tap <b>Test</b>.</li>
+      <li><b>Your Google account.</b> Tell your appraiser which Google account you will use; the first check asks you to sign in with it (your email address only - nothing in your Drive is touched). Only accounts the appraiser has listed are answered.</li>
+      <li><b>Your AI key.</b> The reading of your photos and the full check run on an AI account you pay for, at a few cents a record. Go to <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>, create an account, add a payment method under <b>Billing</b> (a $5 top-up lasts a long time), then <b>API keys</b> &rarr; <b>Create key</b>. Copy it (it starts with <code>sk-ant-</code>) and paste it below. It is stored only on this phone and sent with each check.</li>
+      <li><b>Sales history.</b> Nothing to set up: the price history comes through your appraiser's own memberships. If the answer says the history could not be checked, tell your appraiser.</li>
+    </ol>
+  </details>
+  <label class="field" for="inCheckUrl">Check address</label>
+  <div class="addrow">
+    <input type="text" id="inCheckUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/&hellip;/exec">
+    <button id="btnCheckPing" type="button">Test</button>
+  </div>
+  <p id="checkPing" class="hint"></p>
+  <label class="field" for="inCheckAiKey">Your AI key</label>
+  <input type="text" id="inCheckAiKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-&hellip;">
+  <p class="hint">Leave it empty only if your appraiser has said their sheet will cover the cost.</p>
+
+  <h2 class="sect">Google Drive direct upload (optional)</h2>
   <p id="builtinNote" class="hint hidden" style="margin-bottom:10px">Nothing to set up — this copy of the app already has its Google details built in. Tap <b>Upload to Google Drive</b> on the save screen, sign in with your own Google account, and allow access. Your photos stay in <b>your</b> Drive.</p>
 
   <label class="field" for="inShareWith">Share uploads with <span class="lbl-opt">— email address</span></label>
@@ -545,5 +647,6 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 <div id="toast"></div>
 <script src="detect.js"></script>
 <script src="app.js"></script>
+<script src="check.js"></script>
 </body>
 </html>

@@ -33,6 +33,14 @@ Android: **Install app on this phone** on the home screen (or menu ⋮ → Insta
 iPhone: **Share** → **Add to Home Screen**, which the app prompts for. It then runs
 full-screen and works offline after the first load.
 
+## Check a record before you buy
+
+Two photos - the front cover and a label - and the asking price go to your appraiser's
+sheet, which reads the record off them and answers whether the price is reasonable; a
+full check adds the pressing, the condition and a value. The appraiser gives you the
+check address and lists your Google account; the AI reading runs on a key you hold.
+Set up under Settings, step by step.
+
 ## Saving to Google Drive
 
 Tap **Upload to Google Drive**, sign in with your own Google account, allow. The app
