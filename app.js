@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260916-211635';
+const APP_VERSION = '20260916-212642';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -498,8 +498,9 @@ async function snap() {
 }
 
 /* ---------- review / crop ---------- */
-let review = { bmp: null, quad: null, circle: null, ellipse: null, shape: 'quad', mode: 'adjust', taps: [], tapActive: null, rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null };
+let review = { bmp: null, quad: null, circle: null, ellipse: null, shape: 'quad', mode: 'adjust', taps: [], tapActive: null, rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null, settle: null, dragTap: null };
 function freeReview() {
+  clearSettle();
   if (review.bmp && review.bmp.close) review.bmp.close();
   review.bmp = null;
   review.quad = null;
@@ -522,7 +523,7 @@ function openReview(bmp) {
   review = {
     bmp, quad: null, circle: null, ellipse: null, shape,
     mode: tapMode ? 'tap' : 'adjust', taps: [], tapActive: null,
-    rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null,
+    rot: 0, scale: 1, dpr: 1, dragging: null, loupe: null, settle: null, dragTap: null,
   };
   $('#btnRotate').textContent = '⟳ 0°';
   // run-outs are flat, straight crops: swap the (redundant) Auto button for the
@@ -559,6 +560,7 @@ async function tryOnDeviceThenTap(bmp) {
   toast('Auto-crop missed — tap the corners', 2400);
 }
 function enterTapMode() {
+  clearSettle();
   const type = curShot && curShot.type;
   review.shape = type === 'label' ? 'ellipse' : type === 'matrix' ? 'rect' : 'quad';
   review.mode = 'tap';
@@ -743,6 +745,43 @@ function commitTap(p) {
   review.tapActive = null;
   review.loupe = null;
   if (review.taps.length >= tapsNeeded()) {
+    // labels and discs: the numbered markers stay live for a moment so a
+    // misplaced one can be dragged before the rim is fitted
+    if (review.shape === 'ellipse' || review.shape === 'circle') { startSettle(); return; }
+    finishTaps();
+    return;
+  }
+  updateTapPrompt();
+  drawReview();
+}
+// After the last rim tap the markers can be moved for TAP_SETTLE_MS; every
+// adjustment restarts the clock, and with nothing touched the fit is accepted.
+const TAP_SETTLE_MS = 3000;
+function clearSettle() {
+  if (review.settle) { clearTimeout(review.settle.timer); clearInterval(review.settle.tick); }
+  review.settle = null;
+  review.dragTap = null;
+}
+function startSettle() {
+  clearSettle();
+  review.settle = {
+    deadline: Date.now() + TAP_SETTLE_MS,
+    timer: setTimeout(finishTaps, TAP_SETTLE_MS),
+    tick: setInterval(updateTapPrompt, 250),   // the countdown in the prompt
+  };
+  updateTapPrompt();
+  drawReview();
+}
+function holdSettle() {   // a marker is being dragged: the clock waits for it
+  if (!review.settle) return;
+  clearTimeout(review.settle.timer);
+  review.settle.timer = null;
+  review.settle.deadline = null;
+}
+function finishTaps() {
+  clearSettle();
+  if (review.mode !== 'tap' || !review.bmp || review.taps.length < tapsNeeded()) return;
+  {
     if (review.shape === 'ellipse') {
       const e = fitEllipse(review.taps);
       if (!e) {
@@ -791,7 +830,12 @@ function updateTapPrompt() {
   for (let i = 0; i < need; i++) pips += `<i class="${i < n ? 'on' : ''}"></i>`;
   $('#tapPips').innerHTML = pips;
   const round = sh === 'ellipse' || sh === 'circle';
-  if (tapping) {
+  if (tapping && review.settle) {
+    const dl = review.settle.deadline;
+    $('#tapMsg').textContent = dl
+      ? `Drag a marker to adjust — accepting in ${Math.max(1, Math.ceil((dl - Date.now()) / 1000))}…`
+      : 'Adjusting — let go to set it';
+  } else if (tapping) {
     const left = need - review.taps.length;
     if (review.taps.length) {
       $('#tapMsg').textContent = round
@@ -880,6 +924,7 @@ function defaultCircle() {
   return { cx: w / 2, cy: h / 2, r: 0.44 * Math.min(w, h) };
 }
 async function autoDetect() {
+  clearSettle();
   if (!review.bmp) return;
   const bmp = review.bmp;
   if (curShot.type === 'matrix') {
@@ -1211,8 +1256,18 @@ rc.addEventListener('pointerdown', e => {
   if (review.mode === 'tap') {
     if (!review.bmp) return;
     const w = review.bmp.width, h = review.bmp.height;
+    if (review.settle) {
+      // the taps are complete: a press near a numbered marker picks it up,
+      // anywhere else is ignored (no sixth point)
+      let best = -1, bd = Infinity;
+      review.taps.forEach((t, i) => { const d = Math.hypot(t.x - px, t.y - py); if (d < bd) { bd = d; best = i; } });
+      if (best < 0 || bd * review.scale > 36) return;
+      holdSettle();
+      review.dragTap = best;
+    } else if (review.taps.length >= tapsNeeded()) return;
     review.tapActive = { x: Math.max(0, Math.min(w, px)), y: Math.max(0, Math.min(h, py)) };
     review.loupe = review.tapActive;
+    if (review.dragTap != null) review.taps[review.dragTap] = review.tapActive;
     rc.setPointerCapture(e.pointerId);
     e.preventDefault();
     drawReview();
@@ -1292,6 +1347,7 @@ rc.addEventListener('pointermove', e => {
       y: Math.max(0, Math.min(h, (e.clientY - r.top) / review.scale)),
     };
     review.loupe = review.tapActive;
+    if (review.dragTap != null) review.taps[review.dragTap] = review.tapActive;
     drawReview();
     return;
   }
@@ -1350,6 +1406,14 @@ rc.addEventListener('pointermove', e => {
 });
 function endDrag() {
   if (review.mode === 'tap') {
+    if (review.dragTap != null) {
+      if (review.tapActive) review.taps[review.dragTap] = review.tapActive;
+      review.dragTap = null;
+      review.tapActive = null;
+      review.loupe = null;
+      startSettle();   // 3 s from this adjustment
+      return;
+    }
     if (review.tapActive) commitTap(review.tapActive);
     return;
   }
@@ -1360,6 +1424,7 @@ function endDrag() {
 }
 function cancelDrag() {
   if (review.mode === 'tap') {
+    if (review.dragTap != null) { endDrag(); return; }
     review.tapActive = null;
     review.loupe = null;
     drawReview();
@@ -1373,6 +1438,7 @@ rc.addEventListener('pointercancel', cancelDrag);
 $('#btnAuto').onclick = autoDetect;
 $('#btnUndo').onclick = () => {
   if (review.mode === 'tap') {
+    clearSettle();
     if (review.taps.length) review.taps.pop();
     review.tapActive = null;
     review.loupe = null;
@@ -1398,7 +1464,7 @@ $('#btnShape').onclick = () => {
 $('#btnFull').onclick = () => {
   if (review.shape === 'ellipse' || review.shape === 'circle') { review.shape = 'circle'; review.circle = fullCircle(); }
   else review.quad = fullQuad();
-  if (review.mode === 'tap') { review.mode = 'adjust'; }
+  if (review.mode === 'tap') { clearSettle(); review.mode = 'adjust'; }
   updateTapPrompt();
   drawReview();
 };
@@ -1563,6 +1629,7 @@ async function updateCropStat() {
 }
 async function saveShot() {
   if (!review.bmp) return;
+  if (review.mode === 'tap' && review.settle) finishTaps();   // accept the markers now
   if (review.mode === 'tap') {
     toast(review.shape === 'ellipse'
       ? 'Tap 5 points around the edge first — or press ○ Circle'
@@ -1805,13 +1872,23 @@ const VOICE_MAP = {
   romeo: 'R', sierra: 'S', tango: 'T', uniform: 'U', victor: 'V',
   whiskey: 'W', xray: 'X', 'x-ray': 'X', yankee: 'Y', zulu: 'Z',
 };
+// "bracket" opens on its first use in an utterance and closes on the next;
+// "open bracket" / "close bracket" say which outright and reset the pairing.
+function voiceBrackets(s) {
+  let open = false;
+  return s.replace(/\b(?:(open|opening|left)[\s-]+|(close|closed|closing|right)[\s-]+)?(?:bracket|parenthesis|paren)s?\b/gi, (m, o, c) => {
+    if (o) open = true; else if (c) open = false; else open = !open;
+    return open ? ' ( ' : ' ) ';
+  });
+}
 function voiceToMatrix(s) {
-  const words = s.trim().split(/\s+/).map(w => {
+  const words = voiceBrackets(s).trim().split(/\s+/).map(w => {
     const key = w.toLowerCase().replace(/[.,]+$/, '');
     return VOICE_MAP[key] !== undefined ? VOICE_MAP[key] : w;
   });
   return words.join(' ')
     .replace(/\s*([-/.#*+=])\s*/g, '$1')   // no spaces around symbols
+    .replace(/\(\s*/g, '(').replace(/\s*\)/g, ')')   // brackets hug what they enclose
     .replace(/\b(\w) (?=\w\b)/g, '$1')     // join runs of single characters: "B 1" -> "B1"
     .replace(/\s*␟\s*/g, ' ')         // a spoken "space" is exactly one space
     .replace(/ {2,}/g, ' ')
