@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260917-150908';
+const APP_VERSION = '20260917-161644';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -288,6 +288,20 @@ async function renderShotList() {
     };
     list.appendChild(item);
   }
+  // The disc count is a checklist row of its own, right where the missing
+  // sides would appear: a single LP that turns out to be a set grows sides
+  // 3-4 in place (nothing taken is touched), and a set shrunk to one LP drops
+  // them - asking first when they hold anything. The habit this fixes: the
+  // default is 1 disc, and the mistake is noticed with the checklist open.
+  const two = curAlbum.discs === 2;
+  const discItem = document.createElement('button');
+  discItem.className = 'shotitem';
+  discItem.innerHTML =
+    `<span class="thumb">${two ? '−' : '＋'}</span>` +
+    `<span class="shotname">${two ? 'Single disc' : '2-disc set'} <em>· ${two ? 'remove sides 3–4' : 'add sides 3–4'}</em></span>` +
+    `<span class="shotstate"></span>`;
+  discItem.onclick = () => setDiscs(two ? 1 : 2);
+  list.appendChild(discItem);
   // per-album personal note (private) — its own row at the very end
   const noteVal = (curAlbum.personalNote || '').trim();
   const noteItem = document.createElement('button');
@@ -314,6 +328,33 @@ async function renderShotList() {
   list.appendChild(bcItem);
   $('#albumProgress').textContent = `${done}/${visible.length}`;
   $('#btnExport').disabled = done === 0;
+}
+// Grow a single LP to a 2-disc set, or shrink a set back to one LP. Growing
+// only reveals the side 3-4 entries; shrinking removes what those entries
+// hold, after saying what that is (a skipped marker alone is not worth asking
+// about). The upload and the album.json manifest read the count afresh.
+async function setDiscs(n) {
+  if (!curAlbum || curAlbum.discs === n) return;
+  if (n === 1) {
+    const shots = await shotsFor(curAlbum.id);
+    const gone = shots.filter(s => {
+      const def = SHOTS.find(d => d.id === s.shotId || s.shotId.startsWith(d.id + '_p'));
+      return def && def.disc === 2;
+    });
+    const photos = gone.filter(s => s.blob).length;
+    const texts = gone.filter(s => s.status === 'text').length;
+    if (photos || texts) {
+      const parts = [];
+      if (photos) parts.push(`${photos} photo${photos === 1 ? '' : 's'}`);
+      if (texts) parts.push(`${texts} typed entr${texts === 1 ? 'y' : 'ies'}`);
+      if (!confirm(`Sides 3–4 hold ${parts.join(' and ')}. Remove them with the sides?`)) return;
+    }
+    for (const s of gone) await dbDel('shots', [curAlbum.id, s.shotId]);
+  }
+  curAlbum.discs = n;
+  await dbPut('albums', curAlbum);
+  toast(n === 2 ? 'Sides 3–4 added — a 2-disc set' : 'Sides 3–4 removed — a single disc');
+  renderShotList();
 }
 // The album is a parameter (defaulting to the open one) because the upload
 // queue names files for albums that are no longer on screen.
