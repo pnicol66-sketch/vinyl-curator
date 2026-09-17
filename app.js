@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260917-161644';
+const APP_VERSION = '20260917-182500';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -234,14 +234,21 @@ let thumbUrls = [];
 async function openAlbum(id) {
   curAlbum = await dbGet('albums', id);
   if (!curAlbum) return goHome();
+  curShot = null;   // a fresh open starts at the top; a return lands on the entry just left
   backToAlbum();
 }
+// The checklist rebuilds on every return, and a rebuilt list starts at the
+// top - on a 4-LP set the entry just finished was two screens down and the
+// next one had to be found again. So the return remembers the entry it came
+// from and lands on it, the next entries right below.
+let focusShotId = null;
 function backToAlbum() {
   stopCam();
   freeReview();
   stopVoice();
   freeSlotUrls();
   textDraft = null;
+  focusShotId = curShot ? curShot.id : null;
   show('scr-album', { title: 'Checklist', back: goHome });
   renderShotList();
 }
@@ -263,6 +270,7 @@ async function renderShotList() {
     const slotRecs = isMatrix ? SLOTS.map(n => byId[slotId(def, n)]).filter(Boolean) : [];
     const item = document.createElement('button');
     item.className = 'shotitem';
+    item.dataset.shot = def.id;
     const thumbChar = status === 'done' ? '' : status === 'text' ? (slotRecs.length ? '' : '⌨') : status === 'skipped' ? '—' : (def.type === 'grade' || isMatrix) ? '⌨' : '📷';
     let nameExtra = status === 'text'
       ? ` <em>· ${esc(rec.text.length > 22 ? rec.text.slice(0, 22) + '…' : rec.text)}</em>`
@@ -328,6 +336,13 @@ async function renderShotList() {
   list.appendChild(bcItem);
   $('#albumProgress').textContent = `${done}/${visible.length}`;
   $('#btnExport').disabled = done === 0;
+  // land on the entry just left (show() had scrolled to the top); the
+  // row's scroll-margin keeps it clear of the sticky header
+  if (focusShotId) {
+    const el = list.querySelector(`[data-shot="${focusShotId}"]`);
+    focusShotId = null;
+    if (el) el.scrollIntoView({ block: 'start' });
+  }
 }
 // Grow a single LP to a 2-disc set, or shrink a set back to one LP. Growing
 // only reveals the side 3-4 entries; shrinking removes what those entries
