@@ -461,6 +461,23 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   </div>
 </section>
 
+<section id="scr-barcode">
+  <div id="bcWrap" style="position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:4/3">
+    <video id="bcVideo" playsinline muted autoplay style="width:100%;height:100%;object-fit:cover;display:block"></video>
+    <div style="position:absolute;left:12%;right:12%;top:35%;bottom:35%;border:2px solid rgba(255,255,255,.75);border-radius:8px;pointer-events:none"></div>
+  </div>
+  <p id="bcHint" class="hint">Hold the barcode on the back cover inside the box. It reads by itself and saves.</p>
+  <p id="bcFail" class="hint hidden" style="color:var(--warn,#e0a040)"></p>
+  <div style="height:14px"></div>
+  <label class="field" for="inUpc">Or type the digits printed under the bars</label>
+  <input id="inUpc" inputmode="numeric" autocomplete="off" placeholder="12 or 13 digits">
+  <div style="height:14px"></div>
+  <div class="stack">
+    <button id="btnUpcSave" class="primary">Save barcode</button>
+    <button id="btnUpcClear" class="secondary danger hidden">Clear barcode</button>
+  </div>
+</section>
+
 <section id="scr-viewer">
   <img id="viewerImg" alt="Saved photo">
   <div id="viewerName"></div>

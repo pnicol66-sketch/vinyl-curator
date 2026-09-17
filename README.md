@@ -17,6 +17,9 @@ directly. Contact pnicol66@gmail.com.
 14/16/18/20 Side 1–4 Matrix/Runout (typed text + up to 4 optional photos each)
 
 Grade entries (02, 04, 07, 09, 11, 13) are typed, not photographed, and export as `.txt`.
+A **Barcode** row (optional, newer pressings) scans the barcode on the back cover with the
+camera, or takes the digits typed; it travels with the album so the sheet can tell one
+edition of a record from another.
 A 1-disc album shows only sides 1–2; choosing "2 discs" adds sides 3–4.
 The "Other" shot is optional and can be skipped.
 

@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260916-212642';
+const APP_VERSION = '20260917-150908';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -301,6 +301,17 @@ async function renderShotList() {
     `<span class="shotstate ${noteVal ? 'done' : ''}">${noteVal ? '✓' : ''}</span>`;
   noteItem.onclick = () => openNote();
   list.appendChild(noteItem);
+  // the barcode (newer pressings): scanned or typed, it names the exact
+  // edition for the sheet's lookups
+  const upcVal = (curAlbum.upc || '').trim();
+  const bcItem = document.createElement('button');
+  bcItem.className = 'shotitem';
+  bcItem.innerHTML =
+    `<span class="thumb">🔢</span>` +
+    `<span class="shotname">Barcode${upcVal ? ` <em>· ${esc(upcVal)}</em>` : ' <em>· optional · newer pressings</em>'}</span>` +
+    `<span class="shotstate ${upcVal ? 'done' : ''}">${upcVal ? '✓' : ''}</span>`;
+  bcItem.onclick = () => openBarcode();
+  list.appendChild(bcItem);
   $('#albumProgress').textContent = `${done}/${visible.length}`;
   $('#btnExport').disabled = done === 0;
 }
@@ -1849,6 +1860,119 @@ $('#btnNoteSave').onclick = async () => {
   backToAlbum();
   toast(t ? 'Note saved ✓' : 'Note cleared');
 };
+/* ---------- barcode (per album; the sheet keys a reissue's edition on it) ---------- */
+// A UPC-A (12) or EAN-13 (13) whose check digit proves it, else ''.
+function upcCheck(text) {
+  const d = String(text || '').replace(/[^0-9]/g, '');
+  if (d.length !== 12 && d.length !== 13) return '';
+  let sum = 0;
+  for (let i = 0; i < d.length - 1; i++) {
+    const w = d.length === 13 ? (i % 2 === 0 ? 1 : 3) : (i % 2 === 0 ? 3 : 1);
+    sum += Number(d[i]) * w;
+  }
+  return ((10 - (sum % 10)) % 10) === Number(d[d.length - 1]) ? d : '';
+}
+let bcStream = null, bcTimer = null, bcDetector = null, bcReader = null, bcBusy = false;
+function bcSay(msg) { $('#bcFail').textContent = msg; $('#bcFail').classList.toggle('hidden', !msg); }
+function openBarcode() {
+  stopCam();
+  freeReview();
+  stopVoice();
+  $('#inUpc').value = curAlbum.upc || '';
+  $('#btnUpcClear').classList.toggle('hidden', !(curAlbum.upc || ''));
+  bcSay('');
+  show('scr-barcode', { title: 'Barcode', back: bcBack });
+  startBarcodeScan();
+}
+function bcBack() { stopBarcodeScan(); backToAlbum(); }
+function stopBarcodeScan() {
+  if (bcTimer) { clearInterval(bcTimer); bcTimer = null; }
+  if (bcStream) { bcStream.getTracks().forEach(t => t.stop()); bcStream = null; }
+  const v = $('#bcVideo');
+  if (v) v.srcObject = null;
+  bcBusy = false;
+}
+async function startBarcodeScan() {
+  stopBarcodeScan();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return bcSay('No camera here (the app needs an https address) - type the digits under the bars instead.');
+  }
+  try {
+    bcStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+  } catch (e) {
+    return bcSay('Camera unavailable or permission denied - type the digits under the bars instead.');
+  }
+  const v = $('#bcVideo');
+  v.srcObject = bcStream;
+  try { await v.play(); } catch {}
+  const tr = bcStream.getVideoTracks()[0];
+  const modes = (tr.getCapabilities && tr.getCapabilities().focusMode) || [];
+  if (modes.includes('continuous')) tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+  // The browser's own detector where it exists (Android Chrome); the ZXing
+  // decoder from the vendor folder (cached with the models) elsewhere.
+  bcDetector = null; bcReader = null;
+  if ('BarcodeDetector' in window) {
+    try { bcDetector = new BarcodeDetector({ formats: ['upc_a', 'ean_13'] }); } catch { bcDetector = null; }
+  }
+  if (!bcDetector) {
+    try {
+      if (typeof ZXing === 'undefined') await loadScript('./vendor/zxing/zxing.min.js');
+      const hints = new Map([[ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.EAN_13]]]);
+      bcReader = new ZXing.BrowserMultiFormatReader(hints);
+    } catch (e) {
+      return bcSay('The scanner could not load - type the digits under the bars instead.');
+    }
+  }
+  bcTimer = setInterval(bcTick, 300);
+}
+async function bcTick() {
+  if (bcBusy || !bcStream) return;
+  bcBusy = true;
+  try {
+    const v = $('#bcVideo');
+    if (!v.videoWidth) return;
+    let raw = '';
+    if (bcDetector) {
+      const codes = await bcDetector.detect(v);
+      if (codes && codes.length) raw = codes[0].rawValue || '';
+    } else if (bcReader) {
+      // decode() reads the video's current frame through the reader's own
+      // capture canvas; a frame with no code throws NotFoundException.
+      try { raw = bcReader.decode(v).getText() || ''; } catch { raw = ''; }
+    }
+    const d = upcCheck(raw);
+    if (d) await bcFound(d);
+  } catch (e) {
+    // a frame that would not decode is not an error
+  } finally {
+    bcBusy = false;
+  }
+}
+async function bcFound(d) {
+  stopBarcodeScan();
+  if (navigator.vibrate) { try { navigator.vibrate(60); } catch {} }
+  curAlbum.upc = d;
+  await dbPut('albums', curAlbum);
+  backToAlbum();
+  toast('Barcode ' + d + ' saved ✓');
+}
+$('#btnUpcSave').onclick = async () => {
+  const typed = $('#inUpc').value.trim();
+  if (!typed) { bcSay('Type the 12 or 13 digits printed under the bars, or hold the barcode in the box.'); return; }
+  const d = upcCheck(typed);
+  if (!d) { bcSay('Those digits fail the barcode\'s own check - look again, especially at the last digit.'); return; }
+  await bcFound(d);
+};
+$('#btnUpcClear').onclick = async () => {
+  stopBarcodeScan();
+  curAlbum.upc = '';
+  await dbPut('albums', curAlbum);
+  backToAlbum();
+  toast('Barcode cleared');
+};
 /* ---------- voice dictation (matrix/runout) ---------- */
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 let speech = null;
@@ -2351,6 +2475,7 @@ async function writeAlbumManifest(folder, album) {
     title: album.title,
     discs: album.discs || 1,
     personalNote: (album.personalNote || '').trim(),
+    upc: (album.upc || '').trim(),
     updated: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
@@ -2947,6 +3072,7 @@ async function reimportAlbum(f) {
       artist, title,
       discs: jobs.some(j => j.def.disc === 2) ? 2 : 1,
       created: Date.now(),
+      upc: upcCheck(manifest && manifest.upc) || '',
       driveFolderName: $('#arcFolder').value || settings.driveFolder,
       driveFolderId: f.id,
     };
