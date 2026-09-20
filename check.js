@@ -52,16 +52,38 @@ $('#btnSaveSettings').addEventListener('click', async () => {
   settings.checkAiKey = $('#inCheckAiKey').value.trim();
   await saveSettings();
 });
+// An id is long and the two being compared often share a project number, so
+// the head and the tail are what tell them apart.
+function shortClient(id) {
+  const s = String(id || '').replace(/\.apps\.googleusercontent\.com$/, '').trim();
+  if (!s) return 'no client at all';
+  return s.length > 26 ? s.slice(0, 16) + '…' + s.slice(-6) : s;
+}
+// Pure: what a ping answer means. The address answering is not enough - the
+// check is refused unless the sheet accepts the very client this app signs in
+// with, and that is a thing to find out in Settings rather than in a shop.
+function checkPingVerdict(j, mine) {
+  if (!j || !j.ok) return { ok: false, line: 'The address answered, but not as expected.' };
+  const build = j.build && j.build.stamped ? ' (build ' + j.build.len + ')' : '';
+  const theirs = String((j && j.clientId) || '').trim();
+  if (!theirs) return { ok: true, line: '✓ The address answers' + build + '. It is on an older version, so it cannot say which sign-in it accepts.' };
+  if (theirs === String(mine || '').trim()) return { ok: true, line: '✓ The address answers' + build + ' and accepts this app’s sign-in.' };
+  return { ok: false, line: '✗ The address answers' + build + ', but it accepts a sign-in from ' + shortClient(theirs) +
+    ' and this app signs in as ' + shortClient(mine) + ' — the check would be refused. Send your appraiser those two lines.' };
+}
 $('#btnCheckPing').onclick = async () => {
   const url = $('#inCheckUrl').value.trim();
   const out = $('#checkPing');
+  out.classList.remove('err');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[-\w]+\/exec$/.test(url)) { out.textContent = 'That is not a check address (it ends in /exec).'; return; }
   out.textContent = 'Testing…';
   try {
     const r = await fetch(url + '?ping=1');
     const j = await r.json();
-    out.textContent = j && j.ok ? '✓ The address answers.' : 'The address answered, but not as expected.';
-  } catch (e) { out.textContent = 'No answer from that address (' + (e.message || e) + ').'; }
+    const v = checkPingVerdict(j, checkClientId());
+    out.textContent = v.line;
+    out.classList.toggle('err', !v.ok);
+  } catch (e) { out.textContent = 'No answer from that address (' + (e.message || e) + ').'; out.classList.add('err'); }
 };
 
 /* ---------- sign-in for the check (email only, no Drive) ---------- */
