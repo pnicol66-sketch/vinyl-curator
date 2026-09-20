@@ -67,12 +67,20 @@ $('#btnCheckPing').onclick = async () => {
 /* ---------- sign-in for the check (email only, no Drive) ---------- */
 
 function checkTokenFresh() { return !!(checkTok.token && Date.now() < checkTok.exp - 60000); }
+// The check signs in with the BUILT-IN Client ID, never the one in Settings.
+// The appraiser's sheet accepts a token only from the app's own OAuth client
+// and answers "The sign-in was not made through the Vinyl Curator app" for any
+// other - and a phone set up before the built-in id shipped still carries its
+// own id for Drive uploads, which stays exactly where it is (the Drive grants
+// are per-client; clearing it would lose the archive). So the two are kept
+// apart: Settings drives the uploads, the built-in one drives the check.
+function checkClientId() { return String(BUILTIN.clientId || settings.clientId || '').trim(); }
 // Must be called from a tap: Google opens its window only on a user gesture.
 function requestCheckToken() {
   return new Promise((res, rej) => {
     loadGsi().then(() => {
       const tc = google.accounts.oauth2.initTokenClient({
-        client_id: cred('clientId'),
+        client_id: checkClientId(),
         scope: 'openid email',
         callback: r => {
           if (r.access_token) {
@@ -112,7 +120,10 @@ async function checkCall(chk, op, extra) {
       if (j) return j;
       last = new Error('The sheet\'s answer did not arrive ' + CHECK_SHORT_RETRIES + ' times - tap again to carry on');
     } catch (e) {
-      if (/refused|not set up|sign in|expired|malformed|Unknown operation|key|needed|first|belongs|start again/i.test(String(e.message))) throw e;
+      // "sign.?in": the sheet writes "sign-in" as often as "sign in", and a
+      // refusal that is never going to change is reported at once, not four
+      // times over fifteen seconds.
+      if (/refused|not set up|sign.?in|expired|malformed|Unknown operation|key|needed|first|belongs|start again/i.test(String(e.message))) throw e;
       last = e;
     }
   }
@@ -135,7 +146,7 @@ async function checkRun(chk, op, extra, onProgress) {
     if (ownDone && own instanceof Error) throw own;
     if (ownDone && own && own.ok) return { answer: own, status: null };
     let st = null;
-    try { st = await race(checkPost(chk, 'status', {})); } catch (e) { if (/belongs|start again|not set up|sign in|expired/i.test(String(e.message))) throw e; st = null; }
+    try { st = await race(checkPost(chk, 'status', {})); } catch (e) { if (/belongs|start again|not set up|sign.?in|expired/i.test(String(e.message))) throw e; st = null; }
     if (ownDone && own instanceof Error) throw own;
     if (ownDone && own && own.ok) return { answer: own, status: null };
     if (st === 'own') st = null;
@@ -179,7 +190,7 @@ async function sendPictures(chk, onStage) {
     for (const p of pending) list.push({ n: p.n, tag: p.tag, b64: await blobToB64(p.blob) });
     let j = null;
     try { j = await checkPost(chk, 'pictures', { pictures: list }); }
-    catch (e) { if (/already has its row|belongs|start again|sign in|expired/i.test(String(e.message))) throw e; j = null; }
+    catch (e) { if (/already has its row|belongs|start again|sign.?in|expired/i.test(String(e.message))) throw e; j = null; }
     let landed = [];
     if (j && j.pictures) landed = j.pictures.map(p => p.n);
     else {
