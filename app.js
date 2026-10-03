@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20260920-203618';
+const APP_VERSION = '20261003-164420';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2052,6 +2052,64 @@ const VOICE_MAP = {
   romeo: 'R', sierra: 'S', tango: 'T', uniform: 'U', victor: 'V',
   whiskey: 'W', xray: 'X', 'x-ray': 'X', yankee: 'Y', zulu: 'Z',
 };
+// Named stamps: a few dead-wax marks are logos no keyboard carries, so saying the
+// mark's name types it exactly as Discogs writes it, and a dictated runout reads
+// the same as the Discogs one. Matched as whole phrases BEFORE the word-by-word
+// map (a name is several words), then parked as a private-use placeholder until
+// the very end, so nothing in between - the despacing, the single-letter join,
+// the capitals - can touch the mark.
+// Each phrase also takes the punctuation the engine hangs on a word ("anvil,"),
+// as the word map strips it, so it never lands in the runout as a stray mark.
+const VOICE_STAMPS = [
+  // Sonic Arts, San Francisco (lacquer cut there): an outlined dash bulging in the
+  // centre, drawn ⊏◯⊐ on its Discogs entry. Only with "logo" / "symbol" / "stamp" /
+  // "mark" after it - the bare words "Sonic Arts" stay words.
+  [/\bsonic[\s-]+arts?['’]?s?[\s-]+(?:logo|symbol|stamp|mark)s?\b(?:['’]s)?[.,]*/gi, '⊏◯⊐'],
+  // Capitol's Scranton, Pennsylvania plant: the stamped "anvil". Its Discogs entry
+  // asks for the words "[Anvil symbol]" in a runout instead of a Unicode glyph.
+  // "anvil" alone or the plant's full name ("Capitol Scranton anvil logo") types
+  // it; a lone "Capitol" before it stays, since MASTERED BY CAPITOL is stamped too.
+  [/\b(?:capit[oa]l[\s-]+scranton[\s-]+|scranton[\s-]+)?anvils?(?:[\s-]+(?:logo|symbol|stamp|mark)s?)?\b(?:['’]s)?[.,]*/gi, '[Anvil symbol]'],
+];
+// Placeholders: the private-use character VOICE_STAMP_BASE + i stands in for stamp i.
+// Built from char codes, never typed: an invisible character in source is a trap.
+const VOICE_STAMP_BASE = 0xE000;
+function voiceStampsIn(s) {
+  return VOICE_STAMPS.reduce((t, st, i) => t.replace(st[0], ' ' + String.fromCharCode(VOICE_STAMP_BASE + i) + ' '), s);
+}
+function voiceStampsOut(s) {
+  let out = '';
+  for (const c of s) {
+    const i = c.charCodeAt(0) - VOICE_STAMP_BASE;
+    out += i >= 0 && i < VOICE_STAMPS.length ? VOICE_STAMPS[i][1] : c;
+  }
+  return out;
+}
+// A pause inside a stamp's name ("Sonic Arts" ... "logo") ends the utterance, so
+// the halves are committed apart and neither is a stamp on its own. When a final
+// is committed, a stamp that SPANS the seam between the text already committed
+// and the new final is joined back; one wholly on either side was already typed.
+function voiceStampsSeam(base, next) {
+  if (!base) return next;
+  if (!next) return base;
+  const tail = base.split(' ').slice(-3).join(' ');
+  const keep = base.slice(0, base.length - tail.length);
+  const head = next.split(' ').slice(0, 3).join(' ');
+  const rest = next.slice(head.length);
+  const w = tail + ' ' + head;
+  for (const st of VOICE_STAMPS) {
+    const re = new RegExp(st[0].source, 'gi');
+    let m;
+    while ((m = re.exec(w))) {
+      if (m.index < tail.length && m.index + m[0].length > tail.length + 1) {
+        const left = w.slice(0, m.index).trim();
+        const right = (w.slice(m.index + m[0].length) + rest).trim();
+        return (keep + [left, st[1], right].filter(Boolean).join(' ')).replace(/ {2,}/g, ' ').trim();
+      }
+    }
+  }
+  return base + ' ' + next;
+}
 // "bracket" opens on its first use in an utterance and closes on the next;
 // "open bracket" / "close bracket" say which outright and reset the pairing.
 function voiceBrackets(s) {
@@ -2062,11 +2120,11 @@ function voiceBrackets(s) {
   });
 }
 function voiceToMatrix(s) {
-  const words = voiceBrackets(s).trim().split(/\s+/).map(w => {
+  const words = voiceBrackets(voiceStampsIn(s)).trim().split(/\s+/).map(w => {
     const key = w.toLowerCase().replace(/[.,]+$/, '');
     return VOICE_MAP[key] !== undefined ? VOICE_MAP[key] : w;
   });
-  return words.join(' ')
+  return voiceStampsOut(words.join(' ')
     .replace(/\s*([-/.#*+=])\s*/g, '$1')   // no spaces around symbols
     .replace(/\(\s*/g, '(').replace(/\s*\)/g, ')')   // brackets hug what they enclose
     .replace(/\b(\w) (?=\w\b)/g, '$1')     // join runs of single characters: "B 1" -> "B1"
@@ -2092,7 +2150,7 @@ function voiceToMatrix(s) {
     .replace(/\bPOOR\b/g, 'P')
     // +/- despacing can glue a grade onto a following eye-label ("VG+6-EYE"):
     // put the space back so grade and label read apart ("VG+ 6-EYE").
-    .replace(/([+-])(\d-EYE)\b/g, '$1 $2');
+    .replace(/([+-])(\d-EYE)\b/g, '$1 $2'));
 }
 // The known grades, and the words / mis-hearings the speech engine hands back for
 // each. Grades are a tiny closed set, so we can snap to the real one — the short
@@ -2223,7 +2281,10 @@ function startVoiceSession() {
       if (r.isFinal) {
         if (i >= committed) {
           const mf = voiceMap(pickTranscript(r));
-          if (mf) { voiceBase = (voiceBase ? voiceBase + ' ' : '') + mf; voiceProgress = true; }
+          if (mf) {
+            voiceBase = voiceMap === voiceToMatrix ? voiceStampsSeam(voiceBase, mf) : (voiceBase ? voiceBase + ' ' : '') + mf;
+            voiceProgress = true;
+          }
           committed = i + 1;
         }
       } else {

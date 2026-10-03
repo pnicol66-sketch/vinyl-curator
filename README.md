@@ -78,8 +78,12 @@ remembered too.
   move it, drag its edge to resize.
 - Matrix/Runout entries are **typed** (keyboard or 🎤 dictation) and export as `.txt`.
   Dictation converts spoken symbol words: numbers, `dash - slash / dot . hash # star *
-  plus + equals =`, the stamped shapes `triangle △ square □ circle ○ diamond ◇`, and
-  "space", which types a space like the spacebar ("M R space triangle" → `MR △`).
+  plus + equals =`, the stamped shapes `triangle △ square □ circle ○ diamond ◇`,
+  "bracket" (the first in a phrase types `(`, the next `)`), the named stamps
+  "Sonic Arts logo" (or symbol, stamp, mark) → `⊏◯⊐` and "anvil" (Capitol
+  Scranton) → `[Anvil symbol]`,
+  written as Discogs writes them, and "space", which types a space like the
+  spacebar ("M R space triangle" → `MR △`).
   Each side also holds up to **4 optional photos** — pick a slot in the dropdown on the
   text screen, tap 📷, and the photos export as `… Matrix Runout A1.jpg`–`A4.jpg`
   (B/C/D for sides 2–4).
