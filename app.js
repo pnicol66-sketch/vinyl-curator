@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261003-223812';
+const APP_VERSION = '20261003-223931';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2104,7 +2104,7 @@ const VOICE_STAMPS = [
   [/\b(?:k(?:ee|ie)l(?:[\s-]+air[\s-]*force)?|air[\s-]*force)[\s-]+(?:logo|symbol|stamp|mark)s?\b(?:['’]s)?[.,]*/gi, '⊂◯⊃'],
   // Capitol's Scranton plant, 1963-1973: the stamped triangle with I over A M (the
   // International Association of Machinists). Its Discogs entry prescribes no form,
-  // and transcribers write the letters IAM (111 of the 168 sampled releases that
+  // and transcribers write the bare letters IAM (92 of the 169 sampled releases that
   // write it). "IAM triangle", "triangle I A M", "IAM logo" type it; the engine
   // may hear "I A M" as "I am".
   [/\b(?:i[\s.]*a[\s.]*m\.?[\s-]+(?:in[\s-]+an?[\s-]+)?(?:triangle|logo|symbol|stamp|mark)s?|triangle[\s-]+i[\s.]*a[\s.]*m)\b(?:['’]s)?[.,]*/gi, 'IAM'],
