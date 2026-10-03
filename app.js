@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261003-174546';
+const APP_VERSION = '20261003-185550';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -119,8 +119,11 @@ const BUILTIN = {
 };
 
 /* ---------- settings ---------- */
-const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', autoCrop: true, autoLevel: true, logCrops: false, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
-const CROP_FOLDER = 'Vinyl Curator Crop Training';
+const settings = { clientId: '', apiKey: '', projectNumber: '', shareWith: '', autoCrop: true, autoLevel: true, logCrops: true, cropNotice: 0, maxOut: 2400, quality: 0.92, driveFolder: 'Vinyl Curator', driveFolders: null, driveFolderIds: null };
+// Crop training examples go straight from the phone to the maker's intake,
+// never through anyone's Drive (Google's API user-data policy forbids training
+// a general model on data read out of Drive).
+const CROP_INTAKE = 'https://crops.vinylcurator.net/v1/crop';
 // What the app should actually use: an explicit Settings entry always wins, so
 // one client can point a build at their own project without a separate build.
 function cred(k) { return String(settings[k] || BUILTIN[k] || '').trim(); }
@@ -1664,7 +1667,7 @@ function fineLevel(src, deg, circular) {
 // geometry you set, in the logged image's own pixels. Non-fatal on any error.
 async function logCrop() {
   try {
-    if (!settings.logCrops || !review.bmp) return;
+    if (!settings.logCrops || !settings.cropNotice || !review.bmp) return;   // nothing kept before the notice
     const bmp = review.bmp;
     const maxL = 1280;
     const sc = Math.min(1, maxL / Math.max(bmp.width, bmp.height));
@@ -1687,7 +1690,7 @@ async function logCrop() {
     const id = 'crop_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const geom = {
       id, when: new Date().toISOString(), app: APP_VERSION,
-      shot: curShot ? { id: curShot.id, type: curShot.type, name: curShot.name } : null,
+      shot: curShot ? { id: curShot.id, type: curShot.type } : null,   // a shot's name may be one the collector typed
       // the album's id only (to keep one album's shots together in a split):
       // the training reads no artist or title, so none is copied out
       album: curAlbum ? { id: curAlbum.id } : null,
@@ -1702,9 +1705,10 @@ async function updateCropStat() {
   if (!el) return;
   try {
     const logs = await dbAll('croplog');
-    if (!logs.length) { el.textContent = settings.logCrops ? 'Crop data: none yet — crop a few records.' : ''; return; }
-    const up = logs.filter(e => e && e.uploaded).length;
-    el.textContent = `Crop data: ${logs.length} saved · ${up} uploaded · ${logs.length - up} waiting for the next album upload.`;
+    const sent = logs.filter(e => e && e.uploaded).length;
+    const waiting = logs.filter(e => e && !e.uploaded && e.blob).length;
+    if (!sent && !waiting) { el.textContent = settings.logCrops ? 'Crop data: none yet — crop a few records.' : ''; return; }
+    el.textContent = `Crop data: ${sent} sent · ${waiting} waiting to send.`;
   } catch (e) { el.textContent = ''; }
 }
 async function saveShot() {
@@ -2584,24 +2588,68 @@ async function uploadFile(folder, name, mime, blob) {
     body,
   });
 }
-// Upload any queued crop training examples (original photo + geometry sidecar)
-// into their own Drive folder, then mark them done. Reuses the live token, so
-// it piggybacks on a normal album upload. Returns how many pairs went up.
-async function syncCropLogs(onStatus) {
-  const pending = (await dbAll('croplog')).filter(e => e && !e.uploaded && e.blob);
-  if (!pending.length) return 0;
-  const folder = await findOrCreateFolder(CROP_FOLDER, 'root');
+// The description that travels with a crop example: the fields the training
+// reads and no more. An example queued by an older build also carries the
+// album's artist and title and the shot's name; those stay on the phone.
+function cropMeta(g) {
+  return {
+    id: g.id, when: g.when, app: g.app,
+    shot: g.shot ? { id: g.shot.id, type: g.shot.type } : null,
+    album: g.album && g.album.id ? { id: g.album.id } : null,
+    image: g.image, shape: g.shape, rot: g.rot || 0, source: g.source, geom: g.geom,
+  };
+}
+// Send any waiting crop training examples (the original photo + the crop set
+// on it) to the intake, one POST each; no sign-in is needed, so it runs
+// whenever the upload pump does. A sent example keeps its line for the count
+// in Settings and drops its photo. Returns how many went.
+async function syncCropLogs() {
+  if (!settings.logCrops || !settings.cropNotice) return 0;
   let n = 0;
-  for (const e of pending) {
-    if (onStatus) onStatus(`Saving crop data ${n + 1}/${pending.length}…`);
-    await uploadFile(folder, e.id + '.jpg', 'image/jpeg', e.blob);
-    await uploadFile(folder, e.id + '.json', 'application/json',
-      new Blob([JSON.stringify(e.geom, null, 0)], { type: 'application/json' }));
-    e.uploaded = true;
+  for (const e of await dbAll('croplog')) {
+    if (!e) continue;
+    if (e.uploaded) {                  // sent (or, before 3 Oct 2026, copied to the owner's Drive)
+      if (e.blob) { delete e.blob; await dbPut('croplog', e); }
+      continue;
+    }
+    if (!e.blob || !e.geom) continue;
+    const fd = new FormData();
+    fd.append('meta', JSON.stringify(cropMeta(e.geom)));
+    fd.append('image', e.blob, e.id + '.jpg');
+    const r = await fetch(CROP_INTAKE, { method: 'POST', body: fd });
+    let j = null;
+    try { j = await r.json(); } catch (x) {}
+    if (r.ok && j && j.ok) { e.uploaded = true; e.sent = Date.now(); n++; }
+    // a refusal of the example itself would come back the same every time: let it go
+    else if (r.status === 400 || r.status === 413) e.refused = (j && j.error) || ('HTTP ' + r.status);
+    else throw new Error('crop intake: ' + ((j && j.error) || ('HTTP ' + r.status)));   // busy or offline: next time
+    delete e.blob;
     await dbPut('croplog', e);
-    n++;
   }
   return n;
+}
+// Turning crop training off deletes the copies not yet sent.
+async function dropUnsentCrops() {
+  for (const e of await dbAll('croplog')) if (e && !e.uploaded) await dbDel('croplog', e.id);
+}
+// Crop training is on for every phone (owner, 2026-10-03), after this notice
+// once: nothing is kept or sent before it has been seen, OK keeps it on, and
+// Cancel turns it off and deletes anything already waiting.
+async function maybeCropNotice() {
+  if (settings.cropNotice) return;
+  const keep = confirm(
+    'Crop training data\n\n' +
+    'To make automatic cropping better, the app sends a copy of each photo you crop ' +
+    'to the maker of Vinyl Curator: the photo as you took it, before cropping and ' +
+    'reduced in size, and the outline you set.\n\n' +
+    'Nothing else goes with it: no artist, title, notes or grades, and nothing from ' +
+    'your Google Drive.\n\n' +
+    'OK keeps this on. Cancel turns it off. You can change it any time in ' +
+    'Settings ⚙ → Crop training data.');
+  settings.cropNotice = 1;
+  settings.logCrops = keep;
+  await saveSettings();
+  if (!keep) await dropUnsentCrops();
 }
 
 // The album's own record of what it is, written into its Drive folder.
@@ -2913,10 +2961,10 @@ async function pumpUploads() {
       await uploadAlbum(al);
       if (al.upload && al.upload.state === 'paused') break;
     }
-    if (settings.logCrops && tokenFresh()) {
+    if (settings.logCrops && settings.cropNotice) {
       try {
-        const cn = await syncCropLogs(null);
-        if (cn) toast(`+${cn} crop training example${cn === 1 ? '' : 's'} → Drive`, 3000);
+        const cn = await syncCropLogs();
+        if (cn) toast(`+${cn} crop training example${cn === 1 ? '' : 's'} sent`, 3000);
       } catch (e) { console.error('crop sync', e); }
     }
   } finally {
@@ -3397,7 +3445,10 @@ $('#btnSaveSettings').onclick = async () => {
   settings.apiKey = $('#inApiKey').value.trim();
   settings.autoCrop = $('#inAutoCrop').checked;
   settings.autoLevel = $('#inAutoLevel').checked;
+  const cropsWere = settings.logCrops;
   settings.logCrops = $('#inLogCrops').checked;
+  if (settings.logCrops) settings.cropNotice = settings.cropNotice || 1;   // ticked with its description in view
+  else if (cropsWere) await dropUnsentCrops();
   settings.projectNumber = $('#inProjectNumber').value.trim();
   const shareWas = cred('shareWith');
   settings.shareWith = $('#inShareWith').value.trim();
@@ -3418,6 +3469,8 @@ $('#btnWipe').onclick = async () => {
   if (!confirm('Delete ALL albums, photos, and settings stored by this app on this phone?')) return;
   await dbClear('shots');
   await dbClear('albums');
+  await dbClear('croplog');   // crop training copies not yet sent
+  await dbClear('checks');    // record checks and their photos
   await dbClear('kv');
   toast('All app data deleted');
   goHome();
@@ -3575,5 +3628,6 @@ async function migrateRunout() {
   showVersion();
   maybeCoachIosInstall().catch(() => {});
   await goHome();
+  try { await maybeCropNotice(); } catch (e) { console.error('crop notice', e); }
   pumpUploads();   // an interrupted queue: no token yet, so this marks it paused and shows the sign-in
 })();

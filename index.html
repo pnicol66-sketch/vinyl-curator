@@ -572,7 +572,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <ol>
       <li><b>The check address.</b> Ask your appraiser for it - a long link ending in <code>/exec</code>. Paste it below and tap <b>Test</b>.</li>
       <li><b>Your Google account.</b> Tell your appraiser which Google account you will use; the first check asks you to sign in with it (your email address only - nothing in your Drive is touched). Only accounts the appraiser has listed are answered.</li>
-      <li><b>Your AI key.</b> The reading of your photos and the full check run on an AI account you pay for, at a few cents a record. Go to <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>, create an account, add a payment method under <b>Billing</b> (a $5 top-up lasts a long time), then <b>API keys</b> &rarr; <b>Create key</b>. Copy it (it starts with <code>sk-ant-</code>) and paste it below. It is stored only on this phone and sent with each check.</li>
+      <li><b>Your reading key.</b> The reading of your photos and the full check run on an Anthropic account you pay for, at a few cents a record. Go to <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>, create an account, add a payment method under <b>Billing</b> (a $5 top-up lasts a long time), then <b>API keys</b> &rarr; <b>Create key</b>. Copy it (it starts with <code>sk-ant-</code>) and paste it below. It is stored only on this phone and sent with each check.</li>
       <li><b>Sales history.</b> Nothing to set up: the price history comes through your appraiser's own memberships. If the answer says the history could not be checked, tell your appraiser.</li>
     </ol>
   </details>
@@ -582,7 +582,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <button id="btnCheckPing" type="button">Test</button>
   </div>
   <p id="checkPing" class="hint"></p>
-  <label class="field" for="inCheckAiKey">Your AI key</label>
+  <label class="field" for="inCheckAiKey">Your reading key</label>
   <input type="text" id="inCheckAiKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-&hellip;">
   <p class="hint">Leave it empty only if your appraiser has said their sheet will cover the cost.</p>
 
@@ -626,7 +626,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     <summary>Crop training data</summary>
     <label style="display:flex;gap:10px;align-items:flex-start;margin-top:8px;font-size:14px">
       <input type="checkbox" id="inLogCrops" style="margin-top:3px">
-      <span>Save each crop to Drive — the original photo plus the crop you set, in a <b>“Vinyl Curator Crop Training”</b> folder. Uploaded next time you upload an album. Off by default.</span>
+      <span><b>Send crop training data</b> — to make automatic cropping better, each photo you crop is sent to the maker of Vinyl Curator: the photo as you took it (before cropping, reduced in size) and the outline you set. Nothing else goes with it: no artist, title, notes or grades, and nothing from your Google Drive. On unless you turn it off; turning it off also deletes any copies not yet sent.</span>
     </label>
     <p id="cropStat" class="hint" style="margin-top:10px"></p>
   </details>

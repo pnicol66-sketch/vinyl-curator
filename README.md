@@ -41,7 +41,7 @@ full-screen and works offline after the first load.
 Two photos - the front cover and a label - and the asking price go to your appraiser's
 sheet, which reads the record off them and answers whether the price is reasonable; a
 full check adds the pressing, the condition and a value. The appraiser gives you the
-check address and lists your Google account; the AI reading runs on a key you hold.
+check address and lists your Google account; the reading runs on a key you hold.
 Set up under Settings, step by step.
 
 ## Saving to Google Drive
@@ -93,8 +93,11 @@ remembered too.
 ## Privacy
 
 Everything (photos, album info, settings) is stored locally in the browser's IndexedDB on
-the phone. Nothing leaves the phone except when you explicitly upload to your own Google
-Drive. See [privacy.html](privacy.html).
+the phone. Album photos leave the phone only when you upload them to your own Google
+Drive. Two things are sent elsewhere: crop training data (a reduced copy of each photo you
+crop and the outline you set, to improve automatic cropping; on unless you turn it off in
+Settings) and, if you use it, a record check to your appraiser. See
+[privacy.html](privacy.html).
 
 ## Developer notes
 

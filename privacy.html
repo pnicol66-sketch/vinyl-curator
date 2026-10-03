@@ -33,23 +33,27 @@ footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line);
 <body>
 
 <h1>Vinyl Curator — Privacy Policy</h1>
-<p class="updated">Last updated 20 August 2026</p>
+<p class="updated">Last updated 3 October 2026</p>
 
-<p>Vinyl Curator is a photography app for cataloguing vinyl records. It runs entirely
-in your web browser on your own phone. There is no Vinyl Curator server, no account to
-create, and no company collecting anything about you.</p>
+<p>Vinyl Curator is a photography app for cataloguing vinyl records. It runs in your web
+browser on your own phone. There is no account to create, and no company collecting
+anything about you. The one thing the app's maker receives is the crop training data
+described below, which you can turn off.</p>
 
 <div class="box">
-  <p style="margin:0"><strong>The short version.</strong> Your photographs stay on your
-  phone and in your own Google Drive. Nothing is sent to us, because there is no "us" to
-  send it to — the app has no backend of any kind.</p>
+  <p style="margin:0"><strong>The short version.</strong> Your album photographs and
+  details stay on your phone and in your own Google Drive. The one thing sent to the
+  app's maker is crop training data — a reduced copy of each photo you crop and the
+  outline you set, with nothing that names you — and you can turn it off in Settings.</p>
 </div>
 
 <h2>What the app stores, and where</h2>
 <ul>
   <li><strong>On your phone.</strong> Your album photographs, the details you type
   (artist, title, grades, matrix numbers) and your settings are held in your browser's
-  local storage on the device. They are not transmitted anywhere by the app.</li>
+  local storage on the device. They are not transmitted anywhere by the app except as
+  this page describes. Crop training copies wait here until they are sent, and are then
+  deleted from the phone.</li>
   <li><strong>In your Google Drive, if you choose.</strong> When you tap "Upload to
   Google Drive", the app copies that album's photographs into a folder in
   <em>your own</em> Google Drive account. You own those files.</li>
@@ -73,24 +77,73 @@ prompt.</p>
   <li>You remain the owner and can stop sharing at any time from Google Drive itself.</li>
 </ul>
 
+<h2>Crop training data (on unless you turn it off)</h2>
+<p>To make the app's automatic cropping better, each time you save a cropped photo the
+app keeps a copy and sends it to the app's maker the next time it is online. The first
+time the app opens with this in place, it tells you and asks whether to keep it on.</p>
+<ul>
+  <li><strong>What is sent:</strong> the photograph as you took it, before cropping,
+  reduced to 1280 pixels on its longest side and re-saved, so it carries no location or
+  camera details; the outline you set on it and any rotation; which kind of shot it was
+  (cover, label or run-out); whether you adjusted an automatic crop; the app version; and
+  a reference number that groups one album's photos together.</li>
+  <li><strong>What is not sent:</strong> no artist, title, notes, grades or prices, nothing
+  from your Google Drive, and nothing that names you. The address your phone connects
+  from is not stored with them.</li>
+  <li><strong>Where it goes:</strong> to <code>crops.vinylcurator.net</code>, over an
+  encrypted connection, into private storage only the app's maker can read. It is used
+  only to improve the app's automatic cropping, and is never published, sold or
+  shared.</li>
+  <li><strong>To turn it off:</strong> Settings ⚙ → <em>Crop training data</em> → untick
+  <em>Send crop training data</em> → <em>Save settings</em>. Nothing more is kept or sent,
+  and copies not yet sent are deleted from your phone.</li>
+  <li>Because nothing that identifies you is sent with them, copies already sent cannot
+  be picked out and deleted afterwards.</li>
+</ul>
+
+<h2>Checking a record before you buy (only if you set it up)</h2>
+<p>Settings ⚙ → <em>Check a record</em> lets you ask your appraiser about a record you
+are thinking of buying. It does nothing until you enter the check address your
+appraiser gives you. When you run a check:</p>
+<ul>
+  <li>The photos you take of the listing, and the details and asking price you enter,
+  are sent to that check address (a Google Apps Script address run by your appraiser)
+  and kept in your appraiser's records.</li>
+  <li>To prove who you are, the app asks Google to sign you in and sends that sign-in
+  to the check address. It carries your email address only and gives no access to your
+  Drive.</li>
+  <li>Your appraiser's sheet reads the photos with Anthropic's photo-reading service,
+  on the reading key you entered. The key is stored only on this phone and is sent with
+  each check, for that check only. Anthropic's handling is covered by the
+  <a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">Anthropic
+  Privacy Policy</a>.</li>
+  <li>The answer comes back to your phone and is kept there with the check.</li>
+</ul>
+
 <h2>What the app sends over the internet</h2>
-<p>Only to Google, and only on your instruction:</p>
+<p>Only to these addresses:</p>
 <ul>
   <li><code>accounts.google.com</code> — to sign you in to your own Google account</li>
   <li><code>www.googleapis.com</code> — to upload your photographs to your own Drive</li>
   <li><code>apis.google.com</code> — only if you use the optional folder picker</li>
+  <li><code>crops.vinylcurator.net</code> — crop training data, unless you turn it off</li>
+  <li><code>script.google.com</code> — only if you use <em>Check a record</em>: the check
+  address your appraiser gave you</li>
 </ul>
-<p>Your Google sign-in token is held in the page's memory while you use the app and is
-never written to storage or sent anywhere else. Google's handling of your account is
-covered by the <a href="https://policies.google.com/privacy" target="_blank"
+<p>Your Google sign-in for Drive is held in the page's memory while you use the app, is
+never written to storage, and is sent only to Google. A check's sign-in is held the same
+way and is sent only to Google and to the check address. Google's handling of your
+account is covered by the <a href="https://policies.google.com/privacy" target="_blank"
 rel="noopener">Google Privacy Policy</a>.</p>
 
 <h2>What the app does not do</h2>
 <ul>
   <li>No analytics, tracking, telemetry, or advertising of any kind</li>
   <li>No cookies used for tracking</li>
-  <li>No selling, sharing, or transferring of your data to third parties</li>
-  <li>No use of your data to train any model</li>
+  <li>No selling of your data, and no sharing beyond what this page describes</li>
+  <li>No use of anything read from or saved to your Google Drive to develop, improve or
+  train any artificial-intelligence or machine-learning model — crop training data is
+  sent from the phone and never passes through your Drive</li>
   <li>No collection of your location, contacts, or anything else on the device</li>
 </ul>
 <p>The camera is used only while you are actively taking a photograph, and the image
@@ -99,7 +152,8 @@ goes straight into the app's local storage on your phone.</p>
 <h2>Deleting your data</h2>
 <ul>
   <li><strong>On the phone:</strong> Settings ⚙ → <em>Delete ALL app data</em> removes
-  every album, photograph and setting held locally.</li>
+  every album, photograph, record check, crop training copy and setting held
+  locally.</li>
   <li><strong>In Google Drive:</strong> the uploaded folders are yours — delete them, or
   stop sharing them, from Drive directly.</li>
   <li><strong>Revoking access:</strong> you can remove the app's permission entirely at
@@ -108,7 +162,7 @@ goes straight into the app's local storage on your phone.</p>
 </ul>
 
 <h2>Children</h2>
-<p>The app is not directed at children and collects no personal information from anyone.</p>
+<p>The app is not directed at children.</p>
 
 <h2>Changes</h2>
 <p>If this policy changes, the date at the top of this page changes with it.</p>
