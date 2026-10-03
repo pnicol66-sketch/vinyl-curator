@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261003-174235';
+const APP_VERSION = '20261003-174546';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2093,6 +2093,11 @@ const VOICE_STAMPS = [
   // logo and prescribes no other form, and transcribers write the letters SRC.
   // "Specialty logo" or "SRC logo" types it (plain "S R C" already does).
   [/\b(?:specialty(?:[\s-]+records?)?|s[\s.]*r[\s.]*c\.?)[\s-]+(?:logo|symbol|stamp|mark)s?\b(?:['’]s)?[.,]*/gi, 'SRC'],
+  // Keel Mfg. Corp., Hauppauge, New York (pressing plant, to 1981): the ROUNDED
+  // "air force" logo, which its Discogs entry writes ⊂◯⊃ - not the squared ⊏◯⊐
+  // of Sonic Arts. "Keel logo", "air force logo" or "Keel air force logo" types
+  // it; the engine may hear Keel as "Kiel".
+  [/\b(?:k(?:ee|ie)l(?:[\s-]+air[\s-]*force)?|air[\s-]*force)[\s-]+(?:logo|symbol|stamp|mark)s?\b(?:['’]s)?[.,]*/gi, '⊂◯⊃'],
 ];
 // Placeholders: the private-use character VOICE_STAMP_BASE + i stands in for stamp i.
 // Built from char codes, never typed: an invisible character in source is a trap.

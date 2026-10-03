@@ -82,7 +82,8 @@ remembered too.
   "bracket" (the first in a phrase types `(`, the next `)`), the named stamps
   "Sonic Arts logo" (or symbol, stamp, mark) → `⊏◯⊐`, "anvil" (Capitol
   Scranton) → `[Anvil symbol]`, "Monarch logo" (or "MR logo", "MR in a
-  circle") → `[MR logo]` and "Specialty logo" (or "SRC logo") → `SRC`,
+  circle") → `[MR logo]`, "Specialty logo" (or "SRC logo") → `SRC` and
+  "Keel logo" (or "air force logo") → `⊂◯⊃`,
   written as Discogs writes them, and "space", which types a space like the
   spacebar ("M R space triangle" → `MR △`).
   Each side also holds up to **4 optional photos** — pick a slot in the dropdown on the
