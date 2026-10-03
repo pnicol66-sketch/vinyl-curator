@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261003-170810';
+const APP_VERSION = '20261003-174235';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1688,7 +1688,9 @@ async function logCrop() {
     const geom = {
       id, when: new Date().toISOString(), app: APP_VERSION,
       shot: curShot ? { id: curShot.id, type: curShot.type, name: curShot.name } : null,
-      album: curAlbum ? { id: curAlbum.id, artist: curAlbum.artist, title: curAlbum.title } : null,
+      // the album's id only (to keep one album's shots together in a split):
+      // the training reads no artist or title, so none is copied out
+      album: curAlbum ? { id: curAlbum.id } : null,
       image: { w, h }, shape: review.shape, rot: review.rot || 0,
       source: review.autoSeeded ? 'auto+manual' : 'manual', geom: geomData,
     };
