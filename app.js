@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261003-164420';
+const APP_VERSION = '20261003-170810';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2070,6 +2070,16 @@ const VOICE_STAMPS = [
   // "anvil" alone or the plant's full name ("Capitol Scranton anvil logo") types
   // it; a lone "Capitol" before it stays, since MASTERED BY CAPITOL is stamped too.
   [/\b(?:capit[oa]l[\s-]+scranton[\s-]+|scranton[\s-]+)?anvils?(?:[\s-]+(?:logo|symbol|stamp|mark)s?)?\b(?:['’]s)?[.,]*/gi, '[Anvil symbol]'],
+  // Monarch Record Mfg. Co., Los Angeles: the stamped encircled MR. Its Discogs
+  // entry asks for "[MR logo]" when the stamp is there (a hand-etched MR is just
+  // the letters, "M R"). "Monarch logo", "MR logo" / "stamp", "MR in a circle",
+  // "circled MR" all type it; the engine often hears "M R" as "Mr." or "mister".
+  [/\b(?:monarch(?:[\s-]+records?)?[\s-]+(?:logo|symbol|stamp|mark)s?|(?:m[\s.]*r|mister)\.?[\s-]+(?:(?:logo|symbol|stamp|mark)s?|in[\s-]+an?[\s-]+circle)|circled[\s-]+(?:m[\s.]*r|mister)\.?)\b(?:['’]s)?[.,]*/gi, '[MR logo]'],
+  // Specialty Records Corporation, Olyphant, Pennsylvania: the machine-stamped
+  // logo, an S with R and C in its loops. Its Discogs entry calls it the "SRC"
+  // logo and prescribes no other form, and transcribers write the letters SRC.
+  // "Specialty logo" or "SRC logo" types it (plain "S R C" already does).
+  [/\b(?:specialty(?:[\s-]+records?)?|s[\s.]*r[\s.]*c\.?)[\s-]+(?:logo|symbol|stamp|mark)s?\b(?:['’]s)?[.,]*/gi, 'SRC'],
 ];
 // Placeholders: the private-use character VOICE_STAMP_BASE + i stands in for stamp i.
 // Built from char codes, never typed: an invisible character in source is a trap.
