@@ -610,6 +610,7 @@ function openReview(bmp) {
 // review (drag corners). Miss / slow / offline → tapping.
 async function tryOnDeviceThenTap(bmp) {
   review.mode = 'ai';
+  $('#btnSave').disabled = true;   // re-enabled by updateTapPrompt once the mode moves on
   $('#tapPrompt').classList.remove('hidden', 'tapping');
   $('#tapPips').innerHTML = '';
   $('#tapMsg').textContent = '✨ Auto-cropping…';
@@ -617,6 +618,10 @@ async function tryOnDeviceThenTap(bmp) {
   let res = null;
   try { res = await onDeviceDetect(bmp, curShot && curShot.type); } catch (e) { console.error(e); }
   if (review.bmp !== bmp || !$('#scr-review').classList.contains('active')) return;
+  // Retap, Auto or Full while the model ran moved the mode on (a tap is only
+  // taken in tap mode): that choice stands and the late answer is dropped,
+  // hit or miss, so it never overwrites taps or a frame already set
+  if (review.mode !== 'ai') return;
   if (res && res.kind === 'quad') {
     review.quad = res.quad; review.shape = 'quad'; review.mode = 'adjust'; review.autoSeeded = true;
     updateShapeBtn(); updateTapPrompt(); drawReview();
@@ -631,6 +636,7 @@ function enterTapMode() {
   const type = curShot && curShot.type;
   review.shape = type === 'label' ? 'ellipse' : type === 'matrix' ? 'rect' : 'quad';
   review.mode = 'tap';
+  review.autoSeeded = false;   // a retapped crop is manual, whatever seeded it before
   review.taps = [];
   review.quad = null;
   review.circle = null;
@@ -885,6 +891,9 @@ function finishTaps() {
   drawReview();
 }
 function updateTapPrompt() {
+  // no Save while the on-device crop is still running: it would keep and log a
+  // default inset frame nobody chose
+  $('#btnSave').disabled = review.mode === 'ai';
   const prompt = $('#tapPrompt');
   const sh = review.shape;
   if (sh !== 'quad' && sh !== 'circle' && sh !== 'ellipse') { prompt.classList.add('hidden'); return; }
@@ -994,6 +1003,7 @@ async function autoDetect() {
   clearSettle();
   if (!review.bmp) return;
   const bmp = review.bmp;
+  review.autoSeeded = false;   // the frame below replaces any on-device proposal
   if (curShot.type === 'matrix') {
     review.quad = fullQuad();
     drawReview();
@@ -1531,7 +1541,8 @@ $('#btnShape').onclick = () => {
 $('#btnFull').onclick = () => {
   if (review.shape === 'ellipse' || review.shape === 'circle') { review.shape = 'circle'; review.circle = fullCircle(); }
   else review.quad = fullQuad();
-  if (review.mode === 'tap') { clearSettle(); review.mode = 'adjust'; }
+  review.autoSeeded = false;
+  if (review.mode === 'tap' || review.mode === 'ai') { clearSettle(); review.mode = 'adjust'; }
   updateTapPrompt();
   drawReview();
 };
@@ -1695,7 +1706,7 @@ async function updateCropStat() {
   } catch (e) { el.textContent = ''; }
 }
 async function saveShot() {
-  if (!review.bmp) return;
+  if (!review.bmp || review.mode === 'ai') return;
   if (review.mode === 'tap' && review.settle) finishTaps();   // accept the markers now
   if (review.mode === 'tap') {
     toast(review.shape === 'ellipse'
