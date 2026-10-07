@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261003-223931';
+const APP_VERSION = '20261007-200724';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -17,6 +17,11 @@ function toast(msg, ms = 2600) {
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function sanitize(s) { return s.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim(); }
 function pad2(n) { return String(n).padStart(2, '0'); }
+// A canvas keeps its pixels until the browser gets round to collecting it, and
+// on a phone that falls behind: one save made several canvases of up to 50 MB
+// (a 12 MP photo), and the phone slowed album by album until it was restarted.
+// Zeroing the size hands the memory back at once.
+function freeCanvas(c) { if (c) { c.width = 0; c.height = 0; } }
 
 /* ---------- shot definitions ---------- */
 const VINYL_TIP = '📸 Take the photo, then tap 3 points around the edge to crop. Center the whole disc, fill the frame, and angle it slightly under light so surface marks show honestly.';
@@ -521,9 +526,10 @@ $('#btnSkip').onclick = async () => {
 // luminance variance; a real photo, even a dim runout, carries texture, so this
 // never rejects a genuinely dark shot.
 function isBlankFrame(bmp) {
+  let c = null;
   try {
     const n = 32;
-    const c = document.createElement('canvas');
+    c = document.createElement('canvas');
     c.width = n; c.height = n;
     const cx = c.getContext('2d', { willReadFrequently: true });
     cx.drawImage(bmp, 0, 0, n, n);
@@ -537,6 +543,7 @@ function isBlankFrame(bmp) {
     const variance = sum2 / cnt - (sum / cnt) ** 2;
     return variance < 6;
   } catch { return false; }   // never block a capture on a measurement error
+  finally { freeCanvas(c); }
 }
 async function snap() {
   let bmp = null;
@@ -558,7 +565,7 @@ async function snap() {
     const c = document.createElement('canvas');
     c.width = v.videoWidth; c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
-    bmp = await createImageBitmap(c);
+    try { bmp = await createImageBitmap(c); } finally { freeCanvas(c); }
     if (isBlankFrame(bmp)) {
       if (bmp.close) bmp.close();
       return toast('Camera returned a blank frame — hold steady and snap again', 3000);
@@ -778,6 +785,7 @@ async function onDeviceDetect(bmp, type) {
   const pcx = pc.getContext('2d', { willReadFrequently: true });
   pcx.drawImage(bmp, 0, 0, S, S);
   const d = pcx.getImageData(0, 0, S, S).data;
+  freeCanvas(pc);
   let mx = 0;
   for (let i = 0; i < d.length; i += 4) { if (d[i] > mx) mx = d[i]; if (d[i + 1] > mx) mx = d[i + 1]; if (d[i + 2] > mx) mx = d[i + 2]; }
   if (mx <= 0) mx = 255;
@@ -1023,6 +1031,7 @@ async function autoDetect() {
     cx2.drawImage(bmp, 0, 0, sw2, sh2);
     let circ = null;
     try { circ = Detect.detectCircle(cx2.getImageData(0, 0, sw2, sh2)); } catch (e) { console.error(e); }
+    freeCanvas(c2);
     review.shape = 'circle';   // "○ Circle" = plain circle crop, no deskew
     if (circ) {
       review.circle = { cx: circ.cx / sc2, cy: circ.cy / sc2, r: circ.r / sc2 };
@@ -1046,6 +1055,7 @@ async function autoDetect() {
   cx.drawImage(bmp, 0, 0, sw, sh);
   let q = null;
   try { q = Detect.detect(cx.getImageData(0, 0, sw, sh)); } catch (e) { console.error(e); }
+  freeCanvas(c);
   if (q) {
     review.quad = q.map(p => ({ x: p.x / sc, y: p.y / sc }));
     toast('Outline detected ✓ — drag corners or edges to fine-tune');
@@ -1561,6 +1571,34 @@ function isAxisRect(q) {
   return Math.abs(q[0].x - q[3].x) < e && Math.abs(q[1].x - q[2].x) < e &&
          Math.abs(q[0].y - q[1].y) < e && Math.abs(q[2].y - q[3].y) < e;
 }
+// Straighten a skewed outline into an ow x oh canvas. The warp reads pixels
+// out of the photo, and reading the WHOLE photo held two more full-size copies
+// of it (a canvas and its pixels, ~50 MB each at 12 MP) for every skewed cover.
+// Only the outline's own rectangle is read now, at full resolution, so the
+// output is the same to the pixel (pinned by tests/app-save.js in the script
+// repo). The 2 px margin covers the bilinear sampler's second pixel; a side
+// that reaches the photo's edge stops there, where the warp clamps anyway.
+function warpQuad(src, q, ow, oh) {
+  const W = src.width, H = src.height;
+  const xs = q.map(p => p.x), ys = q.map(p => p.y);
+  const x0 = Math.min(W - 1, Math.max(0, Math.floor(Math.min(...xs)) - 2));
+  const y0 = Math.min(H - 1, Math.max(0, Math.floor(Math.min(...ys)) - 2));
+  const x1 = Math.max(x0 + 1, Math.min(W, Math.ceil(Math.max(...xs)) + 2));
+  const y1 = Math.max(y0 + 1, Math.min(H, Math.ceil(Math.max(...ys)) + 2));
+  const sc = document.createElement('canvas');
+  sc.width = x1 - x0; sc.height = y1 - y0;
+  let srcData;
+  try {
+    const sctx = sc.getContext('2d', { willReadFrequently: true });
+    sctx.drawImage(src, x0, y0, sc.width, sc.height, 0, 0, sc.width, sc.height);
+    srcData = sctx.getImageData(0, 0, sc.width, sc.height);
+  } finally { freeCanvas(sc); }
+  const outData = Detect.warp(srcData, q, ow, oh, x0, y0);
+  const out = document.createElement('canvas');
+  out.width = ow; out.height = oh;
+  out.getContext('2d').putImageData(outData, 0, 0);
+  return out;
+}
 function rotateCanvas(c, rot) {
   const r90 = rot % 2 === 1;
   const out = document.createElement('canvas');
@@ -1596,6 +1634,7 @@ function autoLevelAngle(srcCanvas, circular) {
   const cx0 = cv.getContext('2d', { willReadFrequently: true });
   cx0.drawImage(srcCanvas, 0, 0, w, h);
   const d = cx0.getImageData(0, 0, w, h).data;
+  freeCanvas(cv);
   const g = new Float32Array(w * h);
   for (let i = 0, p = 0; i < g.length; i++, p += 4) g[i] = 0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2];
   const cx = w / 2, cy = h / 2, rIn = circular ? 0.6 * Math.min(w, h) / 2 : 0, rIn2 = rIn * rIn;
@@ -1665,17 +1704,21 @@ function fineLevel(src, deg, circular) {
 }
 // Queue one crop training example: the ORIGINAL (uncropped) photo + the crop
 // geometry you set, in the logged image's own pixels. Non-fatal on any error.
-async function logCrop() {
+// In two halves since 7 Oct 2026: logCropTake draws the photo small and notes
+// the outline at once, while the review still holds them, so the full-size
+// photo can be released the moment the save is done; logCropKeep encodes and
+// stores the copy afterwards, never in the way of the save. Before, the whole
+// example was made in the middle of every save - when crop training was turned
+// on for every phone (3 Oct), a phone that had managed about ten albums before
+// a restart managed about two.
+function logCropTake() {
+  let c = null;
   try {
-    if (!settings.logCrops || !settings.cropNotice || !review.bmp) return;   // nothing kept before the notice
+    if (!settings.logCrops || !settings.cropNotice || !review.bmp) return null;   // nothing kept before the notice
     const bmp = review.bmp;
     const maxL = 1280;
     const sc = Math.min(1, maxL / Math.max(bmp.width, bmp.height));
     const w = Math.max(2, Math.round(bmp.width * sc)), h = Math.max(2, Math.round(bmp.height * sc));
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    c.getContext('2d').drawImage(bmp, 0, 0, w, h);
-    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
-    if (!blob) return;
     const r1 = v => Math.round(v * sc * 10) / 10;
     let geomData;
     if (review.shape === 'ellipse' && review.ellipse) {
@@ -1686,7 +1729,7 @@ async function logCrop() {
       geomData = { cx: r1(c0.cx), cy: r1(c0.cy), r: r1(c0.r) };
     } else if (review.quad) {
       geomData = review.quad.map(p => [r1(p.x), r1(p.y)]);
-    } else return;
+    } else return null;
     const id = 'crop_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const geom = {
       id, when: new Date().toISOString(), app: APP_VERSION,
@@ -1697,8 +1740,24 @@ async function logCrop() {
       image: { w, h }, shape: review.shape, rot: review.rot || 0,
       source: review.autoSeeded ? 'auto+manual' : 'manual', geom: geomData,
     };
-    await dbPut('croplog', { id, blob, geom, uploaded: false, when: Date.now() });
+    c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    const taken = { id, geom, c };
+    c = null;
+    return taken;
+  } catch (e) {
+    console.error('crop log', e);
+    freeCanvas(c);
+    return null;
+  }
+}
+async function logCropKeep(taken) {
+  if (!taken) return;
+  try {
+    const blob = await new Promise(r => taken.c.toBlob(r, 'image/jpeg', 0.85));
+    if (blob) await dbPut('croplog', { id: taken.id, blob, geom: taken.geom, uploaded: false, when: Date.now() });
   } catch (e) { console.error('crop log', e); }
+  finally { freeCanvas(taken.c); }
 }
 async function updateCropStat() {
   const el = $('#cropStat');
@@ -1733,6 +1792,7 @@ async function saveShot() {
   btn.disabled = true;
   btn.textContent = 'Saving…';
   await new Promise(r => setTimeout(r, 40)); // let the button repaint
+  let cropTaken = null;
   try {
     const bmp = review.bmp;
     let outCanvas;
@@ -1792,34 +1852,33 @@ async function saveShot() {
     } else {
       const q = review.quad;
       const { w: ow, h: oh } = Detect.outputSize(q, settings.maxOut);
-      const sc = document.createElement('canvas');
-      sc.width = bmp.width; sc.height = bmp.height;
-      const sctx = sc.getContext('2d', { willReadFrequently: true });
-      sctx.drawImage(bmp, 0, 0);
-      const srcData = sctx.getImageData(0, 0, sc.width, sc.height);
-      const outData = Detect.warp(srcData, q, ow, oh);
-      outCanvas = document.createElement('canvas');
-      outCanvas.width = ow; outCanvas.height = oh;
-      outCanvas.getContext('2d').putImageData(outData, 0, 0);
+      outCanvas = warpQuad(bmp, q, ow, oh);
     }
-    if (review.rot) outCanvas = rotateCanvas(outCanvas, review.rot);
+    if (review.rot) { const r = rotateCanvas(outCanvas, review.rot); freeCanvas(outCanvas); outCanvas = r; }
     if (settings.autoLevel !== false) {
       try {
         const circular = review.shape === 'ellipse' || review.shape === 'circle';
         const lvl = autoLevelAngle(outCanvas, circular);
-        if (lvl) outCanvas = fineLevel(outCanvas, lvl, circular);
+        if (lvl) { const l = fineLevel(outCanvas, lvl, circular); freeCanvas(outCanvas); outCanvas = l; }
       } catch (e) { console.error('auto-level', e); }  // never block a save on it
     }
-    const blob = await new Promise((res, rej) =>
-      outCanvas.toBlob(b => b ? res(b) : rej(new Error('JPEG encode failed')), 'image/jpeg', settings.quality));
-    await logCrop();   // queue the (original + geometry) training example
+    let blob;
+    try {
+      blob = await new Promise((res, rej) =>
+        outCanvas.toBlob(b => b ? res(b) : rej(new Error('JPEG encode failed')), 'image/jpeg', settings.quality));
+    } finally { freeCanvas(outCanvas); }
+    // the training example's small copy and outline, taken while the review
+    // still holds the photo; encoded and stored once the save is done
+    cropTaken = logCropTake();
     if (curSlot) {
       await dbPut('shots', { albumId: curAlbum.id, shotId: slotId(curShot, curSlot), status: 'photo', blob, when: Date.now() });
+      logCropKeep(cropTaken); cropTaken = null;   // not awaited: it never holds up the next shot
       const saved = curSlot;
       await openTextEntry(curShot);
       toast(`Photo ${saved} saved ✓`);
     } else {
       await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'done', blob, when: Date.now() });
+      logCropKeep(cropTaken); cropTaken = null;
       backToAlbum();
       toast('Saved ✓');
     }
@@ -1827,6 +1886,7 @@ async function saveShot() {
     console.error(e);
     toast('Save failed: ' + e.message, 4000);
   } finally {
+    if (cropTaken) freeCanvas(cropTaken.c);   // the save failed: no example of a photo that was not kept
     btn.disabled = false;
     btn.textContent = 'Save';
   }

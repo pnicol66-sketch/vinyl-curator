@@ -5,6 +5,8 @@
  * detect(imageData)            -> quad [{x,y} x4] (TL,TR,BR,BL) or null
  * outputSize(quad, maxOut)     -> {w,h} true-aspect output size for the quad
  * warp(imageData, quad, w, h)  -> ImageData, perspective-corrected crop
+ * warp(imageData, quad, w, h, ox, oy) -> the same, where imageData is a window
+ *                                 of the photo whose top-left is at (ox, oy)
  *
  * Method: Sobel edges -> gradient-gated Hough transform restricted to
  * near-vertical / near-horizontal lines -> strongest line on each of the four
@@ -324,7 +326,12 @@ const Detect = (() => {
     return hm;
   }
 
-  function warp(srcData, quad, outW, outH) {
+  // ox / oy (whole numbers) say where srcData's top-left sits in the photo the
+  // quad is drawn on, so a caller can pass only the window around the quad
+  // instead of the whole photo. Subtracting a whole number from a coordinate
+  // is exact in floating point, so every sample lands on the same pixel with
+  // the same weights as a warp of the whole photo (tests/app-save.js).
+  function warp(srcData, quad, outW, outH, ox = 0, oy = 0) {
     const Hm = homographyFromRect(outW, outH, quad);
     if (!Hm) throw new Error('Invalid crop shape — adjust the corners');
     const sw = srcData.width, sh = srcData.height, sp = srcData.data;
@@ -337,8 +344,8 @@ const Detect = (() => {
       for (let u = 0; u < outW; u++) {
         const ux = u + 0.5;
         const den = h6 * ux + h7 * vy + 1;
-        const sx = (h0 * ux + h1 * vy + h2) / den - 0.5;
-        const sy = (h3 * ux + h4 * vy + h5) / den - 0.5;
+        const sx = (h0 * ux + h1 * vy + h2) / den - 0.5 - ox;
+        const sy = (h3 * ux + h4 * vy + h5) / den - 0.5 - oy;
         const x0 = Math.floor(sx), y0 = Math.floor(sy);
         const fx = sx - x0, fy = sy - y0;
         const cx0 = x0 < 0 ? 0 : (x0 >= sw ? sw - 1 : x0);
