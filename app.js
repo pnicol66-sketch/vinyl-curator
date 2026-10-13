@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261007-200724';
+const APP_VERSION = '20261013-235939';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2593,39 +2593,160 @@ async function findFolder(name, parent) {
 // since been renamed. A name match with NO stored id means a different copy of
 // the same record, and that choice belongs to the owner, not to a default.
 //
-// The clash question defaults to the SAFE answer. OK - the button Enter
-// presses, the one a tired hand hits - now makes a new folder and touches
-// nothing. Merging two copies' photographs is the deliberate branch, and it
-// says how many files it would replace before you choose it.
+// THE FOLDER BELONGS TO THE ALBUM THAT MADE IT (2026-10-13). That guard was
+// not enough. On 10 Oct a NEW album for a second copy of a record (a 2-LP
+// reissue) reached the folder of the first copy (a 1965 mono) and replaced
+// its 18 photographs name for name. Two paths could do that, and neither
+// looked at whose folder it was: the clash question's Cancel meant "the SAME
+// record - replace", and a folder brought back with Re-import was linked to
+// a new album that then uploaded into it without a word. The owner could not
+// say which ("maybe I hit cancel so let's fix that too").
+//
+// Now whose folder it is is read before anything is written (folderStanding):
+// a folder's album.json names its owner (appAlbumId); a folder from before
+// album.json is the album's own only if the album uploaded there and the
+// folder is not older than the album.
+//   - an album writes silently only into a folder it owns;
+//   - OK, the button Enter presses, is the safe answer in every question
+//     here: a new folder, the other one untouched;
+//   - an album LINKED to a folder it does not own - a re-import, marked
+//     (reimportedFrom) or from before the mark, or a folder another album
+//     has taken - is told what the folder holds (its disc count and the day
+//     its album was made are the tells a second copy differs on). Replacing
+//     its photos takes Cancel AND a second OK on a question that says how
+//     many files go; the album then carries the folder's owner on (ownerId);
+//   - the upload queue asks folderStanding again before the first file.
+// To add photos to another album, open THAT album (Uploaded albums).
 async function resolveAlbumFolder(album, folderName, root, itemNames) {
   if (album.driveFolderId) {
+    let f = null;
     try {
-      const f = await drive('https://www.googleapis.com/drive/v3/files/' +
-        album.driveFolderId + '?fields=id,name,trashed');
-      if (f && f.id && !f.trashed) return { id: f.id, name: f.name };
+      f = await drive('https://www.googleapis.com/drive/v3/files/' +
+        album.driveFolderId + '?fields=id,name,trashed,createdTime');
     } catch (e) {
-      // folder deleted or unreachable - fall through and treat as a new upload
+      // only a folder that is GONE becomes a new upload below; any other
+      // answer (a rate limit, a 5xx, no signal) stops, to be tried again
+      if (!/Drive error 404\b/.test(String(e && e.message))) throw e;
+      f = null;
+    }
+    if (f && f.id && !f.trashed) {
+      const st = await folderStanding(f.id, album, f.createdTime);
+      if (st.mine) return { id: f.id, name: f.name };
+      // Linked to a folder that is not its own: a re-import (marked, or from
+      // before the mark), or a folder another album has taken. OK - the button
+      // Enter presses - is the safe answer, as in every question here; to
+      // replace another album's photos takes Cancel AND a second OK on a
+      // question that says how many files go.
+      const clashes = await countClashingFiles(f.id, itemNames);
+      const holds = st.own ? ownerText(st.own) : 'photos from before album records were kept';
+      const fresh = confirm(album.reimportedFrom === f.id
+        ? 'This album was downloaded from the Drive folder "' + f.name + '" (' + holds + ').\n\n' +
+          'OK = it is a DIFFERENT copy. Upload into a NEW folder; "' + f.name + '" is left untouched.\n\n' +
+          'Cancel = it is THAT copy (photos added or re-shot): put them back into "' + f.name +
+          '". You are asked before anything in it is replaced.'
+        : 'This album is linked to the Drive folder "' + f.name + '", which holds ' + holds + ' - not this album.\n\n' +
+          'OK = this is a DIFFERENT copy, or you are not sure. Upload into a NEW folder; "' +
+          f.name + '" is left untouched.\n\n' +
+          'Cancel = it is THE SAME COPY. You are asked before anything in it is replaced.');
+      if (fresh) {
+        delete album.reimportedFrom;   // its own album from here on
+        return newAlbumFolder(folderName, root, album);
+      }
+      const replace = confirm(
+        'Replace ' + clashes + ' file' + (clashes === 1 ? '' : 's') + ' in "' + f.name + '" with this album\'s photos, ' +
+        'and its album record (album.json) with this album\'s?\n\n' +
+        'Only for THE SAME COPY.\n\n' +
+        'OK = replace them.\n\n' +
+        'Cancel = stop. Nothing is uploaded.');
+      if (!replace) throw new Error(UPLOAD_STOPPED);
+      album.ownerId = st.own ? st.own.appAlbumId : album.id;
+      return { id: f.id, name: f.name };
     }
   }
   const existing = await findFolder(folderName, root);
-  if (!existing) return { id: await findOrCreateFolder(folderName, root), name: folderName };
-  const clashes = await countClashingFiles(existing, itemNames);
-  const newFolder = confirm(
-    'Drive already has a folder called "' + folderName + '".\n\n' +
-    'OK = a DIFFERENT copy (another pressing or variant). Upload into a new ' +
+  if (!existing) {
+    const made = await findOrCreateFolder(folderName, root);
+    album.madeFolderId = made;   // its own, whatever the phone's clock says
+    return { id: made, name: folderName };
+  }
+  const own = await folderOwner(existing);
+  // this album's own folder, reached by its name - it made it
+  if (own && own.appAlbumId === albumOwnerId(album)) return { id: existing, name: folderName };
+  const fresh = confirm(
+    'Drive already has a folder called "' + folderName + '"' +
+    (own ? ', holding ' + ownerText(own) : '') + '.\n\n' +
+    'OK = this is a DIFFERENT copy (another pressing or variant). Upload into a new ' +
     'folder and leave that one untouched.\n\n' +
-    'Cancel = the SAME record. Add these photos to the existing folder' +
-    (clashes
-      ? ', REPLACING ' + clashes + ' file' + (clashes === 1 ? '' : 's') + ' already in it.'
-      : '.'));
-  if (!newFolder) return { id: existing, name: folderName };
+    'Cancel = stop. Nothing is uploaded.\n\n' +
+    'To add photos to THAT album, open it from Uploaded albums instead.');
+  if (!fresh) throw new Error(UPLOAD_STOPPED);
+  return newAlbumFolder(folderName, root, album);
+}
+const UPLOAD_STOPPED = 'Upload stopped - nothing was changed in Drive.';
+// The album id a folder's album.json names: a re-imported album that the
+// collector confirmed as the same copy carries its folder's owner on.
+function albumOwnerId(album) { return album.ownerId || album.id; }
+// When an album was made: its id is Date.now() in base 36 (0 for any other id).
+function albumMadeMs(id) {
+  const ms = parseInt(String(id || ''), 36);
+  return ms > 1.5e12 && ms < 2.5e12 ? ms : 0;
+}
+// Is this folder the album's own? album.json says so; or this album made it
+// (madeFolderId - whatever the phone's clock says); or, for a folder with no
+// album.json yet (from before album.json, or a first upload stopped before its
+// album.json went up), the folder is not older than the album - an album
+// cannot have made a folder that existed before it: that is a re-import,
+// marked or from before the mark. An hour's margin for a phone clock that runs
+// fast. (Not the album's "uploaded" stamp: Unhide clears it.) {mine, own}
+async function folderStanding(folderId, album, createdTime) {
+  if (createdTime === undefined) {
+    const m = await drive('https://www.googleapis.com/drive/v3/files/' + folderId + '?fields=createdTime');
+    createdTime = m && m.createdTime;
+  }
+  const own = await folderOwner(folderId);
+  if (own) return { mine: own.appAlbumId === albumOwnerId(album), own };
+  const made = albumMadeMs(album.id), created = Date.parse(createdTime || '') || 0;
+  const olderThanAlbum = !!(made && created && created < made - 3600000);
+  const mine = !!album.ownerId || album.madeFolderId === folderId ||
+    (!album.reimportedFrom && !olderThanAlbum);
+  return { mine, own: null };
+}
+async function newAlbumFolder(folderName, root, album) {
   for (let n = 2; n < 50; n++) {
     const alt = folderName + ' (' + n + ')';
     if (!(await findFolder(alt, root))) {
-      return { id: await findOrCreateFolder(alt, root), name: alt };
+      const made = await findOrCreateFolder(alt, root);
+      if (album) album.madeFolderId = made;
+      return { id: made, name: alt };
     }
   }
   throw new Error('Could not find a free folder name for "' + folderName + '".');
+}
+// Who owns a folder: its album.json, read - {appAlbumId, artist, title,
+// discs} or null when it has none (a folder from before album.json). A read
+// that FAILS throws: the upload stops rather than guess the folder is free.
+async function folderOwner(folderId) {
+  const q = `name='album.json' and '${folderId}' in parents and trashed=false`;
+  const r = await drive('https://www.googleapis.com/drive/v3/files?q=' +
+    encodeURIComponent(q) + '&fields=files(id)');
+  if (!r.files || !r.files.length) return null;
+  const token = await getToken();
+  const res = await fetch('https://www.googleapis.com/drive/v3/files/' + r.files[0].id + '?alt=media', {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error('Could not read the folder\'s album.json (Drive error ' + res.status + ') - nothing was uploaded.');
+  let m = null;
+  try { m = JSON.parse(await res.text()); } catch (e) { m = null; }
+  if (!m || !m.appAlbumId) return null;
+  return { appAlbumId: String(m.appAlbumId), artist: String(m.artist || ''), title: String(m.title || ''), discs: Number(m.discs) || 1 };
+}
+// "Bob Dylan — Bringing It All Back Home, 1 disc, its album made 8 Oct 2026"
+function ownerText(own) {
+  const ms = parseInt(own.appAlbumId, 36);
+  const made = ms > 1.5e12 && ms < 2.5e12
+    ? ', its album made ' + new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  return (own.artist || own.title ? own.artist + ' — ' + own.title + ', ' : '') +
+    own.discs + ' disc' + (own.discs === 1 ? '' : 's') + made;
 }
 // Create or replace one file in a folder, by name. Same find-then-PATCH-or-POST
 // the photo loop always did; it lives here so the manifest goes up the same way.
@@ -2729,7 +2850,7 @@ async function maybeCropNotice() {
 async function writeAlbumManifest(folder, album) {
   const manifest = {
     vinylCurator: 1,
-    appAlbumId: album.id,
+    appAlbumId: albumOwnerId(album),
     artist: album.artist,
     title: album.title,
     discs: album.discs || 1,
@@ -2946,7 +3067,7 @@ $('#btnDrive').onclick = async () => {
     curAlbum.driveFolderName = importFolder;
     curAlbum.driveFolderId = album.id;
     curAlbum.upload = {
-      state: 'queued', albumFolder: album.name, importFolder,
+      state: 'queued', albumFolder: album.name, importFolder, guard: 1,
       done: 0, total: exportItems.length, queued: Date.now(),
     };
     await dbPut('albums', curAlbum);
@@ -3041,6 +3162,21 @@ async function pumpUploads() {
 async function uploadAlbum(al) {
   const folder = al.driveFolderId;
   try {
+    // Checked again as the files go up, not only when the folder was chosen: an
+    // upload resumed or retried later must not write into a folder that another
+    // album owns (2026-10-13 - see resolveAlbumFolder).
+    const st = await folderStanding(folder, al);
+    // a record queued by the build before this guard, into a folder with no
+    // album.json, is not trusted: its folder may be another copy's (the old
+    // clash question's Cancel merged), so it is chosen again with the questions
+    const oldRecord = !st.own && !(al.upload && al.upload.guard) && al.madeFolderId !== folder && !al.ownerId;
+    if (!st.mine || oldRecord) {
+      // the instruction first: the card keeps 120 characters of an error
+      const refused = new Error('Not uploaded: that Drive folder is not this album\'s. Tap Upload to choose a folder. (It holds ' +
+        (st.own ? ownerText(st.own) : 'photos from before album records were kept') + '.)');
+      refused.ownerRefused = true;
+      throw refused;
+    }
     const items = await buildExportItems(al);
     if (!items.length) throw new Error('Nothing to upload — no photos or text saved');
     await setUpload(al, { state: 'uploading', done: 0, total: items.length, error: '' });
@@ -3070,7 +3206,7 @@ async function uploadAlbum(al) {
     console.error('upload', al.id, e);
     const msg = String(e && e.message || e);
     // A refused or cancelled sign-in mid-run is a pause, not a failure.
-    if (/sign-in|token|401/i.test(msg)) { await setUpload(al, { state: 'paused' }); return; }
+    if (!(e && e.ownerRefused) && /sign-in|token|401/i.test(msg)) { await setUpload(al, { state: 'paused' }); return; }
     await setUpload(al, { state: 'failed', error: msg.slice(0, 120) });
   }
 }
@@ -3332,8 +3468,12 @@ async function reimportAlbum(f) {
       discs: jobs.some(j => j.def.disc === 2) ? 2 : 1,
       created: Date.now(),
       upc: upcCheck(manifest && manifest.upc) || '',
+      personalNote: String((manifest && manifest.personalNote) || ''),
       driveFolderName: $('#arcFolder').value || settings.driveFolder,
       driveFolderId: f.id,
+      // linked to that folder, but not its owner until the collector says it
+      // is the same copy (resolveAlbumFolder asks on the first upload)
+      reimportedFrom: f.id,
     };
     const taken = {};
     const texts = {};      // matrix shotId -> {main, extra[]}
