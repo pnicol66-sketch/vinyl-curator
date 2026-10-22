@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261013-235939';
+const APP_VERSION = '20261022-112904';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2168,6 +2168,17 @@ const VOICE_STAMPS = [
   // write it). "IAM triangle", "triangle I A M", "IAM logo" type it; the engine
   // may hear "I A M" as "I am".
   [/\b(?:i[\s.]*a[\s.]*m\.?[\s-]+(?:in[\s-]+an?[\s-]+)?(?:triangle|logo|symbol|stamp|mark)s?|triangle[\s-]+i[\s.]*a[\s.]*m)\b(?:['’]s)?[.,]*/gi, 'IAM'],
+  // A letter in a circle: an enclosed letter stamped in a runout, typed as
+  // Discogs writes it - United Record Pressing's circled U (Ⓤ), Keel's circled K
+  // (Ⓚ), the Dutch cutting room's circled H (Ⓗ) and the P in a circle (℗) some
+  // transcribers write for Blue Note's Plastylite ear. "circled U", "circle U" or
+  // "U in a circle" types it (the engine may hear U as "you", K as "kay", H as
+  // "aitch", P as "pee"); a circle said AFTER the letter ("U circle") stays two
+  // marks, as "M R circle" does. Before 2026-10-22 "circle U" typed a circle and a U.
+  [/\b(?:circled?[\s-]+(?:u|you)|(?:u|you)[\s-]+in[\s-]+an?[\s-]+circle)\b(?:['’]s)?[.,]*/gi, 'Ⓤ'],
+  [/\b(?:circled?[\s-]+(?:k|kay)|(?:k|kay)[\s-]+in[\s-]+an?[\s-]+circle)\b(?:['’]s)?[.,]*/gi, 'Ⓚ'],
+  [/\b(?:circled?[\s-]+(?:h|aitch)|(?:h|aitch)[\s-]+in[\s-]+an?[\s-]+circle)\b(?:['’]s)?[.,]*/gi, 'Ⓗ'],
+  [/\b(?:circled?[\s-]+(?:p|pee|pea)|(?:p|pee|pea)[\s-]+in[\s-]+an?[\s-]+circle)\b(?:['’]s)?[.,]*/gi, '℗'],
 ];
 // Placeholders: the private-use character VOICE_STAMP_BASE + i stands in for stamp i.
 // Built from char codes, never typed: an invisible character in source is a trap.
