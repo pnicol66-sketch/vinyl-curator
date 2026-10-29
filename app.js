@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261029-124531';
+const APP_VERSION = '20261029-143527';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2629,12 +2629,13 @@ async function findFolder(name, parent) {
 //   - an album LINKED to a folder it does not own - a re-import, marked
 //     (reimportedFrom) or from before the mark, or a folder another album
 //     has taken - is told what the folder holds (its disc count and the day
-//     its album was made are the tells a second copy differs on). Replacing
-//     its photos takes Cancel AND a second OK on a question that says how
-//     many files go; the album then carries the folder's owner on (ownerId);
+//     its album was made are the tells a second copy differs on). Uploading
+//     into it takes Cancel AND a second OK on a question that names exactly
+//     what would be replaced (replaceQuestion: the re-upload's own file-by-file
+//     plan); the album then carries the folder's owner on (ownerId);
 //   - the upload queue asks folderStanding again before the first file.
 // To add photos to another album, open THAT album (Uploaded albums).
-async function resolveAlbumFolder(album, folderName, root, itemNames) {
+async function resolveAlbumFolder(album, folderName, root, items) {
   if (album.driveFolderId) {
     let f = null;
     try {
@@ -2653,28 +2654,28 @@ async function resolveAlbumFolder(album, folderName, root, itemNames) {
       // before the mark), or a folder another album has taken. OK - the button
       // Enter presses - is the safe answer, as in every question here; to
       // replace another album's photos takes Cancel AND a second OK on a
-      // question that says how many files go.
-      const clashes = await countClashingFiles(f.id, itemNames);
+      // question that says exactly what would be replaced.
       const holds = st.own ? ownerText(st.own) : 'photos from before album records were kept';
       const fresh = confirm(album.reimportedFrom === f.id
         ? 'This album was downloaded from the Drive folder "' + f.name + '" (' + holds + ').\n\n' +
           'OK = it is a DIFFERENT copy. Upload into a NEW folder; "' + f.name + '" is left untouched.\n\n' +
-          'Cancel = it is THAT copy (photos added or re-shot): put them back into "' + f.name +
-          '". You are asked before anything in it is replaced.'
+          'Cancel = it is THAT copy (photos added or re-shot): upload into "' + f.name +
+          '" - only what changed on this phone goes in. You are told what would be replaced, and asked, first.'
         : 'This album is linked to the Drive folder "' + f.name + '", which holds ' + holds + ' - not this album.\n\n' +
           'OK = this is a DIFFERENT copy, or you are not sure. Upload into a NEW folder; "' +
           f.name + '" is left untouched.\n\n' +
-          'Cancel = it is THE SAME COPY. You are asked before anything in it is replaced.');
+          'Cancel = it is THE SAME COPY. You are told what would be replaced, and asked, first.');
       if (fresh) {
         delete album.reimportedFrom;   // its own album from here on
+        // the record of what was settled with THAT folder says nothing of a new
+        // one: every file there is new, never "deleted or renamed in Drive"
+        delete album.sent;
         return newAlbumFolder(folderName, root, album);
       }
-      const replace = confirm(
-        'Replace ' + clashes + ' file' + (clashes === 1 ? '' : 's') + ' in "' + f.name + '" with this album\'s photos, ' +
-        'and its album record (album.json) with this album\'s?\n\n' +
-        'Only for THE SAME COPY.\n\n' +
-        'OK = replace them.\n\n' +
-        'Cancel = stop. Nothing is uploaded.');
+      // SAID EXACTLY (owner, 2026-10-29): a re-upload decides file by file and
+      // replaces only what changed on this phone, so this question names what
+      // that plan would replace - never "every file of the same name".
+      const replace = confirm(await replaceQuestion(album, f, items));
       if (!replace) throw new Error(UPLOAD_STOPPED);
       album.ownerId = st.own ? st.own.appAlbumId : album.id;
       return { id: f.id, name: f.name };
@@ -2879,17 +2880,29 @@ async function writeAlbumManifest(folder, album) {
   await uploadFile(folder, 'album.json', 'application/json', blob);
 }
 
-// How many of these file names already exist in that folder - i.e. how many
-// photographs an "add to the existing folder" would overwrite. The owner is
-// told the number before choosing, not after.
-async function countClashingFiles(folder, names) {
-  if (!names || !names.length) return 0;
-  const q = `'${folder}' in parents and trashed=false`;
-  const r = await drive('https://www.googleapis.com/drive/v3/files?q=' +
-    encodeURIComponent(q) + '&fields=files(name)&pageSize=1000');
-  const have = {};
-  (r.files || []).forEach(f => { have[f.name] = true; });
-  return names.filter(n => have[n]).length;
+// The question before an album goes into a folder that is not its own, as THE
+// SAME COPY: what the upload would do there, file by file - the re-upload's own
+// plan (planSync: the folder listed once, this phone's files hashed), so what it
+// names is exactly what would be replaced. Reads only. items: the export items.
+async function replaceQuestion(album, f, items) {
+  const rows = await planSync(album, items || [], f.id);
+  const of = act => rows.filter(r => r.act === act);
+  const s = (k, one, many) => k === 1 ? one : many;
+  const names = rs => rs.slice(0, 6).map(r => r.it.name.replace(/^.* - /, '').replace(/\.[^.]+$/, '')).join(', ') +
+    (rs.length > 6 ? ' and ' + (rs.length - 6) + ' more' : '');
+  const replaced = of('send').filter(r => r.df), added = of('send').filter(r => !r.df), asked = of('ask');
+  const kept = rows.filter(r => r.act === 'keep' || r.act === 'hold'), healed = of('heal'), same = of('skip');
+  const lines = [replaced.length
+    ? 'Replaced with this phone\'s copy (changed on this phone): ' + replaced.length + ' ' + s(replaced.length, 'file', 'files') + ' - ' + names(replaced) + '.'
+    : 'No photo or typed entry in it is replaced.'];
+  lines.push('Its album record (album.json) is replaced with this album\'s.');
+  if (added.length) lines.push('Added (not in the folder yet): ' + added.length + ' ' + s(added.length, 'file', 'files') + '.');
+  if (asked.length) lines.push('Changed on this phone AND in Drive, so asked about first - nothing is sent until you choose: ' + names(asked) + '.');
+  if (kept.length) lines.push('Left as they are in Drive: ' + kept.length + ' ' + s(kept.length, 'photo', 'photos') + ' (changed in Drive, or no record of what this phone sent).');
+  if (healed.length) lines.push('Typed ' + s(healed.length, 'entry', 'entries') + ' changed in Drive, taken onto this phone: ' + names(healed) + '.');
+  if (same.length) lines.push('The same on both sides, left alone: ' + same.length + ' ' + s(same.length, 'file', 'files') + '.');
+  return 'Upload into "' + f.name + '" as THE SAME COPY?\n\n' + lines.join('\n') +
+    '\n\nOnly for THE SAME COPY.\n\nOK = upload into it.\n\nCancel = stop. Nothing is uploaded.';
 }
 
 async function findOrCreateFolder(name, parent) {
@@ -3378,8 +3391,7 @@ $('#btnDrive').onclick = async () => {
     const root = await resolveRootFolder(importFolder);
     await shareFolder(root, importFolder, st);
     const folderName = sanitize(`${curAlbum.artist}_${curAlbum.title}`);
-    const album = await resolveAlbumFolder(curAlbum, folderName, root,
-      exportItems.map(i => i.name));
+    const album = await resolveAlbumFolder(curAlbum, folderName, root, exportItems);
     curAlbum.driveFolderName = importFolder;
     curAlbum.driveFolderId = album.id;
     curAlbum.upload = {
@@ -3774,8 +3786,10 @@ async function reimportAlbum(f) {
   let files, manifest = null;
   try {
     const q = `'${f.id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+    // Drive's own SHA-256 of each file comes with the listing: what is
+    // downloaded below is recorded with it (al.sent - see below)
     const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
-      '&fields=files(id,name,mimeType)&orderBy=name&pageSize=1000');
+      '&fields=files(id,name,mimeType,sha256Checksum)&orderBy=name&pageSize=1000');
     files = r.files || [];
     const mf = files.find(x => x.name === 'album.json');
     // A manifest that will not read is not an error: the folder name still answers.
@@ -3836,8 +3850,17 @@ async function reimportAlbum(f) {
       reimportedFrom: f.id,
     };
     const taken = {};
-    const texts = {};      // matrix shotId -> {main, extra[]}
+    const texts = {};      // matrix shotId -> {main, extra[], mains[]}
     const usedSlots = {};  // matrix shotId -> {slotNumber: true}
+    // WHAT WAS DOWNLOADED IS THE RECORD (owner, 2026-10-29): each file the
+    // phone now holds as it is in Drive is recorded, by its name, with Drive's
+    // own SHA-256 from the listing above (al.sent, the re-upload's record). So a
+    // photo re-shot on the phone before the first re-upload is SENT - the phone
+    // changed, Drive did not - instead of kept for want of a record, and a
+    // photo changed in Drive since stays Drive's. A runout entry merged from
+    // more than one file is no one file's copy and is left unrecorded.
+    const sent = {};
+    const recordAsDrive = file => { if (file && file.sha256Checksum) sent[file.name] = file.sha256Checksum; };
     let done = 0;
     for (const j of jobs) {
       done++;
@@ -3847,17 +3870,21 @@ async function reimportAlbum(f) {
         if (taken[j.def.id]) continue;
         taken[j.def.id] = true;
         await dbPut('shots', { albumId: al.id, shotId: j.def.id, status: 'done', blob, when: Date.now() });
+        recordAsDrive(j.file);
       } else if (j.kind === 'text') {
         if (taken[j.def.id]) continue;
         taken[j.def.id] = true;
         const t = (await blob.text()).trim();
-        if (t) await dbPut('shots', { albumId: al.id, shotId: j.def.id, status: 'text', text: t, when: Date.now() });
+        if (t) {
+          await dbPut('shots', { albumId: al.id, shotId: j.def.id, status: 'text', text: t, when: Date.now() });
+          recordAsDrive(j.file);
+        }
       } else if (j.kind === 'mtext') {
         const t = (await blob.text()).trim();
         if (!t) continue;
-        const cur = texts[j.def.id] || (texts[j.def.id] = { main: '', extra: [] });
+        const cur = texts[j.def.id] || (texts[j.def.id] = { main: '', extra: [], mains: [] });
         if (j.legacy) cur.extra.push(t);
-        else cur.main = cur.main ? cur.main + '\n' + t : t;
+        else { cur.main = cur.main ? cur.main + '\n' + t : t; cur.mains.push(j.file); }
       } else if (j.kind === 'slot') {
         const used = usedSlots[j.def.id] || (usedSlots[j.def.id] = {});
         let slot = j.slot;
@@ -3865,12 +3892,15 @@ async function reimportAlbum(f) {
         if (!slot) continue;
         used[slot] = true;
         await dbPut('shots', { albumId: al.id, shotId: slotId(j.def, slot), status: 'photo', blob, when: Date.now() });
+        recordAsDrive(j.file);
       }
     }
     for (const sid of Object.keys(texts)) {
       const t = [texts[sid].main, ...texts[sid].extra].filter(Boolean).join('\n');
       if (t) await dbPut('shots', { albumId: al.id, shotId: sid, status: 'text', text: t, when: Date.now() });
+      if (t && !texts[sid].extra.length && texts[sid].mains.length === 1) recordAsDrive(texts[sid].mains[0]);
     }
+    if (Object.keys(sent).length) al.sent = sent;
     await dbPut('albums', al);
     st.textContent = '';
     toast('Album downloaded ✓ — add to it, then re-upload when done');
