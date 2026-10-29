@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261022-112904';
+const APP_VERSION = '20261029-124531';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -190,12 +190,15 @@ async function goHome() {
       `<div class="al-title">${esc(al.title)}</div>` +
       `<div class="al-meta">${al.discs === 2 ? '2 discs' : '1 disc'} · ${done}/${visible.length} photos</div>` +
       `<div class="al-up${al.upload ? ' ' + al.upload.state : ''}${upText ? '' : ' hidden'}">${esc(upText)}</div></button>` +
-      `<button class="al-retry${al.upload && al.upload.state === 'failed' ? '' : ' hidden'}" aria-label="Retry upload">↻</button>` +
+      (al.upload && al.upload.state === 'ask'
+        ? `<button class="al-retry" aria-label="Choose what to keep">⇄</button>`
+        : `<button class="al-retry${al.upload && al.upload.state === 'failed' ? '' : ' hidden'}" aria-label="Retry upload">↻</button>`) +
       `<button class="al-del${al.upload && al.upload.state === 'uploading' ? ' hidden' : ''}" aria-label="Delete album">🗑</button>`;
     row.querySelector('.al-open').onclick = () => openAlbum(al.id);
     row.querySelector('.al-retry').onclick = async () => {
       const fresh = await dbGet('albums', al.id);
       if (!fresh || !fresh.upload) return;
+      if (fresh.upload.state === 'ask') return openChooser(fresh.id);   // changed on both sides: the collector chooses
       await setUpload(fresh, { state: 'queued', error: '', queued: Date.now() });
       pumpUploads();
     };
@@ -2497,7 +2500,9 @@ $('#btnExport').onclick = openExport;
 // Everything an album has to send: one file per finished checklist entry (a
 // photo, or a typed matrix/runout as text) plus the deadwax photo slots. Read
 // straight from IndexedDB so the upload queue can rebuild it for an album
-// that is no longer the open one.
+// that is no longer the open one. Each item says what it is (kind) and which
+// record it came from (shotId), so a re-upload can put Drive's text back into
+// that record (see "re-upload: only what changed").
 async function buildExportItems(al) {
   const shots = await shotsFor(al.id);
   const byId = Object.fromEntries(shots.map(s => [s.shotId, s]));
@@ -2507,13 +2512,14 @@ async function buildExportItems(al) {
       const rec = byId[def.id];
       const items = [];
       if (rec && rec.status === 'text')
-        items.push({ name: baseNameFor(def, al) + '.txt', blob: new Blob([rec.text + '\n'], { type: 'text/plain' }), mime: 'text/plain' });
+        items.push({ name: baseNameFor(def, al) + '.txt', blob: new Blob([rec.text + '\n'], { type: 'text/plain' }), mime: 'text/plain',
+          kind: 'text', shotId: def.id, text: rec.text });
       else if (rec && rec.status === 'done')
-        items.push({ name: filenameFor(def, al), blob: rec.blob, mime: 'image/jpeg' });
+        items.push({ name: filenameFor(def, al), blob: rec.blob, mime: 'image/jpeg', kind: 'photo', shotId: def.id });
       if (def.type === 'matrix') {
         for (const n of SLOTS) {
           const sr = byId[slotId(def, n)];
-          if (sr) items.push({ name: slotFilename(def, n, al), blob: sr.blob, mime: 'image/jpeg' });
+          if (sr) items.push({ name: slotFilename(def, n, al), blob: sr.blob, mime: 'image/jpeg', kind: 'photo', shotId: slotId(def, n) });
         }
       }
       return items;
@@ -2897,6 +2903,305 @@ async function findOrCreateFolder(name, parent) {
   return made.id;
 }
 
+/* ---------- re-upload: only what changed, file by file ----------
+ *
+ * A re-upload used to send everything the phone holds and replace every Drive
+ * file of the same name. The phone still holds what was first typed and shot,
+ * so one re-upload after a retaken photo would have put back over every
+ * correction made in Drive since: a typed runout or grade corrected to match
+ * the sheet, a photo turned the right way up (owner, 2026-10-27).
+ *
+ * Now each upload records, per file name, the SHA-256 of this phone's copy as
+ * it was settled with Drive - sent, found equal, or set aside for Drive's
+ * (al.sent; Unhide clears only al.uploaded, so the record stays). A re-upload
+ * lists the album's folder ONCE, hashes what the phone would send, and decides
+ * file by file (syncAction):
+ *   missing in Drive                 -> send it (a file deleted or renamed in
+ *                                       Drive goes up again, and is said so;
+ *                                       a renamed copy is left as it is)
+ *   neither side changed             -> skip
+ *   phone and Drive already equal    -> skip, and record the hash
+ *   phone changed, Drive the same    -> send it
+ *   phone the same, Drive changed    -> leave Drive's file; a typed entry
+ *                                       takes Drive's text onto the phone
+ *   changed on both sides            -> ask, showing both - one question for
+ *                                       the album, and nothing of the album is
+ *                                       sent until it is answered
+ * Drive's own sha256Checksum and the phone's crypto.subtle digest are the same
+ * SHA-256, so no clock, the phone's or Google's, is read.
+ *
+ * A file with no record (an album uploaded before this build, or brought back
+ * with Re-import) cannot tell which side changed: a typed entry is compared
+ * with Drive's text - the same is skipped, a difference is asked with Drive's
+ * text shown first and chosen; a photo already in Drive is never replaced
+ * (said in the closing message), a missing one is sent. Once the upload
+ * completes every file has its record, so the next one uses the table.
+ *
+ * The listing is the guard: a listing that fails stops the album with nothing
+ * sent - never "Drive has nothing". Whose folder it is (folderStanding) is
+ * still decided first, and album.json still goes up last.
+ */
+async function sha256Hex(blob) {
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()));
+  let s = '';
+  for (const b of d) s += b.toString(16).padStart(2, '0');
+  return s;
+}
+// A typed entry as compared: line ends and the ends of the text do not count.
+function syncText(s) { return String(s == null ? '' : s).replace(/\r\n?/g, '\n').trim(); }
+// Every file in an album's folder, by name, with Drive's SHA-256 of its
+// content. Reads only. A listing that fails THROWS, page two as much as page
+// one: nothing is decided on a folder that could not be read.
+async function listAlbumFiles(folderId) {
+  const q = `'${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const byName = {};
+  let page = '';
+  do {
+    const r = await drive('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
+      '&fields=nextPageToken,files(id,name,mimeType,sha256Checksum,modifiedTime)&pageSize=1000' +
+      (page ? '&pageToken=' + encodeURIComponent(page) : ''));
+    for (const f of (r && r.files) || []) if (!byName[f.name]) byName[f.name] = f;
+    page = (r && r.nextPageToken) || '';
+  } while (page);
+  return byName;
+}
+// What a re-upload does with one file - the table above. it: the phone's copy
+// {name, kind, hash, text}; df: Drive's file of that name, or none; base: the
+// hash recorded when it was last settled, or none; ans: the collector's answer
+// to an earlier question about exactly these two copies; dText: Drive's text,
+// read for a typed entry whose bytes differ. {act, why}: act is send, skip,
+// keep (leave Drive's photo), heal (take Drive's text), ask or hold (a photo
+// with no record, never replaced).
+function syncAction(it, df, base, ans, dText) {
+  if (!df) return { act: 'send', why: base ? 'gone' : 'new' };
+  const d = df.sha256Checksum || '';
+  if (base && it.hash === base && d === base) return { act: 'skip', why: 'same' };
+  if (d && d === it.hash) return { act: 'skip', why: 'equal' };
+  if (it.kind === 'text' && dText != null && syncText(dText) === syncText(it.text)) return { act: 'skip', why: 'equal text' };
+  if (ans && ans.p === it.hash && ans.d === d) {
+    if (ans.pick === 'phone') return { act: 'send', why: 'chosen' };
+    return { act: it.kind === 'text' ? 'heal' : 'keep', why: 'chosen' };
+  }
+  if (!base) return it.kind === 'text' ? { act: 'ask', why: 'unrecorded' } : { act: 'hold', why: 'unrecorded' };
+  const phone = it.hash !== base, inDrive = d !== base;
+  if (phone && inDrive) return { act: 'ask', why: 'both' };
+  if (phone) return { act: 'send', why: 'phone' };
+  return { act: it.kind === 'text' ? 'heal' : 'keep', why: 'drive' };
+}
+// One listing, one hash per file, Drive's text where a typed entry's bytes
+// differ, then the table. Reads only - nothing is changed here.
+async function planSync(al, items, folder) {
+  const files = await listAlbumFiles(folder);
+  const sent = al.sent || {}, answers = (al.upload && al.upload.answers) || {};
+  const rows = [];
+  for (const it of items) {
+    it.kind = it.kind || (/^text\//.test(it.mime || '') ? 'text' : 'photo');
+    it.hash = await sha256Hex(it.blob);
+    const df = files[it.name];
+    const d = df ? (df.sha256Checksum || '') : '';
+    let dText = null;
+    if (df && it.kind === 'text' && d !== it.hash) dText = await (await driveBlob(df.id)).text();
+    rows.push(Object.assign({ it, df, d, dText }, syncAction(it, df, sent[it.name], answers[it.name], dText)));
+  }
+  return rows;
+}
+// A typed entry takes Drive's text: its record on the phone is rewritten (an
+// entry's photo slots are records of their own and stay as they are). Returns
+// the hash of what the phone would now send. Drive's empty file empties nothing.
+async function settleText(al, it, text) {
+  const t = syncText(text);
+  if (!t) return it.hash;
+  const rec = (await dbGet('shots', [al.id, it.shotId])) || { albumId: al.id, shotId: it.shotId, when: Date.now() };
+  rec.status = 'text';
+  rec.text = t;
+  await dbPut('shots', rec);
+  return sha256Hex(new Blob([t + '\n'], { type: 'text/plain' }));
+}
+// The closing message: what went up, what was already there, and every file
+// the phone did NOT put into Drive, and why - said, never silent.
+function syncSummary(rows) {
+  const n = f => rows.filter(f).length;
+  const s = (k, one, many) => k === 1 ? one : many;
+  const sent = n(r => r.act === 'send'), same = n(r => r.act === 'skip');
+  const healed = n(r => r.act === 'heal'), kept = n(r => r.act === 'keep'), held = n(r => r.act === 'hold');
+  const gone = n(r => r.act === 'send' && r.why === 'gone');
+  const more = [];
+  if (healed) more.push(`${healed} typed ${s(healed, 'entry', 'entries')} taken from Drive onto this phone`);
+  if (kept) more.push(`${kept} ${s(kept, 'photo', 'photos')} left as in Drive`);
+  if (held) more.push(`${held} ${s(held, 'photo', 'photos')} already in Drive not replaced - no record of what this phone sent`);
+  if (gone) more.push(`${gone} missing in Drive (deleted or renamed there) sent again`);
+  return { head: `${sent} sent, ${same} unchanged`, more: more.length ? ' · ' + more.join(' · ') : '' };
+}
+
+/* ---------- changed on both sides: the collector chooses ---------- */
+// One screen per album, whatever the number of files: each file shows Drive's
+// copy first and this phone's beside it. A typed entry with no record has
+// Drive's chosen (most differences are corrections made in the sheet); a file
+// changed on both sides since the last upload has nothing chosen, and the
+// upload does not continue until each has an answer. An answer is kept with
+// the two copies it was given (their hashes): if either changes again before
+// the upload runs, the question is asked again.
+let chooseUrls = [];
+function chooseFree() { chooseUrls.forEach(u => URL.revokeObjectURL(u)); chooseUrls = []; }
+function chooseReady() {
+  const cards = $$('#chooseList .choosecard');
+  $('#btnChooseGo').disabled = !cards.length || cards.some(c => !c.querySelector('input:checked'));
+}
+async function openChooser(albumId) {
+  const al = await dbGet('albums', albumId);
+  if (!al || !al.upload || al.upload.state !== 'ask' || !Array.isArray(al.upload.ask)) return goHome();
+  chooseFree();
+  show('scr-choose', { title: 'Choose what to keep', back: () => { chooseFree(); goHome(); } });
+  $('#chooseHdr').textContent = `${al.artist} — ${al.title}`;
+  $('#chooseStatus').textContent = '';
+  $('#btnChooseGo').dataset.album = al.id;
+  const list = $('#chooseList');
+  list.innerHTML = '';
+  al.upload.ask.forEach((a, i) => {
+    const card = document.createElement('div');
+    card.className = 'choosecard';
+    card.dataset.name = a.name;
+    const why = a.why === 'unrecorded'
+      ? 'Uploaded before this phone kept a record of what it sent, so which side changed is not known. Drive’s is chosen: it is usually a correction made in the sheet.'
+      : 'Changed on this phone and in Drive since the last upload.';
+    card.innerHTML =
+      `<div class="choosename">${esc(a.name)}</div><div class="choosewhy">${why}</div><div class="choosepair">` +
+      `<label class="chooseopt"><input type="radio" name="choose${i}" value="drive"${a.why === 'unrecorded' ? ' checked' : ''}>In Drive` +
+      `<div class="choosebody" data-side="drive">Loading…</div></label>` +
+      `<label class="chooseopt"><input type="radio" name="choose${i}" value="phone">On this phone` +
+      `<div class="choosebody" data-side="phone">Loading…</div></label></div>`;
+    list.appendChild(card);
+  });
+  list.onchange = chooseReady;
+  chooseReady();
+  const cards = $$('#chooseList .choosecard');
+  for (let i = 0; i < al.upload.ask.length; i++) {
+    const a = al.upload.ask[i], card = cards[i];
+    const put = async (side, read) => {
+      const box = card.querySelector(`.choosebody[data-side="${side}"]`);
+      try {
+        const v = await read();
+        if (a.kind === 'text') { box.textContent = v; return; }
+        const u = URL.createObjectURL(v);
+        chooseUrls.push(u);
+        box.textContent = '';
+        const img = document.createElement('img');
+        img.alt = side === 'drive' ? 'In Drive' : 'On this phone';
+        img.src = u;
+        box.appendChild(img);
+      } catch (e) {
+        box.textContent = 'Could not show this copy (' + String(e && e.message || e).slice(0, 80) + ')';
+      }
+    };
+    await put('drive', async () => { const b = await driveBlob(a.driveId); return a.kind === 'text' ? syncText(await b.text()) : b; });
+    await put('phone', async () => {
+      const rec = await dbGet('shots', [al.id, a.shotId]);
+      if (!rec) throw new Error('not on this phone any more');
+      return a.kind === 'text' ? syncText(rec.text) : rec.blob;
+    });
+  }
+}
+$('#btnChooseGo').onclick = async () => {
+  const al = await dbGet('albums', $('#btnChooseGo').dataset.album);
+  if (!al || !al.upload || al.upload.state !== 'ask' || !Array.isArray(al.upload.ask)) { chooseFree(); return goHome(); }
+  const answers = Object.assign({}, al.upload.answers || {});
+  for (const card of $$('#chooseList .choosecard')) {
+    const a = al.upload.ask.find(x => x.name === card.dataset.name);
+    const pick = card.querySelector('input:checked');
+    if (!a || !pick) return toast('Choose Drive’s copy or this phone’s for each file', 3600);
+    answers[a.name] = { pick: pick.value, p: a.p, d: a.d };
+  }
+  await setUpload(al, { state: 'queued', queued: Date.now(), answers, ask: null, error: '' });
+  chooseFree();
+  toast('Upload queued with your choices', 3000);
+  goHome();
+  pumpUploads();
+};
+
+/* ---------- Refresh all uploaded albums from Drive ---------- */
+// A one-off for albums uploaded before this build: every album on the phone
+// with a Drive folder takes the typed entries its folder holds wherever they
+// differ from the phone's, so corrections made in Drive since come back.
+// Photos stay as they are. It READS only - nothing in Drive is written - and
+// it reads only a folder that is the album's own. Every folder it could not
+// read is named.
+async function refreshAlbumFromDrive(al) {
+  let f;
+  try {
+    f = await drive('https://www.googleapis.com/drive/v3/files/' + al.driveFolderId + '?fields=id,name,trashed,createdTime');
+  } catch (e) {
+    if (/Drive error 404\b/.test(String(e && e.message))) throw new Error('its Drive folder is gone');
+    throw e;
+  }
+  if (!f || !f.id) throw new Error('its Drive folder did not answer');
+  if (f.trashed) throw new Error('its Drive folder "' + f.name + '" is in the Drive Trash');
+  const st = await folderStanding(f.id, al, f.createdTime);
+  if (!st.mine) throw new Error('"' + f.name + '" is not this album’s folder, so it was not read');
+  const files = await listAlbumFiles(f.id);
+  const byId = Object.fromEntries((await shotsFor(al.id)).map(s => [s.shotId, s]));
+  const sent = Object.assign({}, al.sent || {});
+  let took = 0, noted = 0;
+  for (const def of SHOTS) {
+    if (def.disc > (al.discs || 1) || (def.type !== 'grade' && def.type !== 'matrix')) continue;
+    const name = baseNameFor(def, al) + '.txt';
+    const df = files[name];
+    if (!df) continue;
+    const rec = byId[def.id];
+    if (rec && rec.status !== 'text') continue;   // a photo in that entry stays as it is
+    const t = syncText(await (await driveBlob(df.id)).text());
+    if (!t) continue;
+    if (rec && syncText(rec.text) === t) {
+      sent[name] = await sha256Hex(new Blob([rec.text + '\n'], { type: 'text/plain' }));   // already equal: recorded
+      noted++;
+      continue;
+    }
+    sent[name] = await settleText(al, { shotId: def.id }, t);
+    took++;
+  }
+  if (took || noted) {
+    al.sent = sent;
+    await dbPut('albums', al);
+    if (curAlbum && curAlbum.id === al.id) curAlbum.sent = al.sent;
+  }
+  return took;
+}
+async function refreshAllFromDrive() {
+  const out = $('#refreshStatus'), btn = $('#btnRefreshDrive');
+  const all = await dbAll('albums');
+  if (all.some(uploadActive)) return toast('Wait for the uploads in progress to finish, then refresh.', 4000);
+  const albums = all.filter(a => a.driveFolderId);
+  if (!albums.length) { out.textContent = 'No album on this phone has a Drive folder yet.'; return; }
+  btn.disabled = true;
+  try {
+    await getToken();
+  } catch (e) {
+    btn.disabled = false;
+    return toast(e.message, 4500);
+  }
+  let read = 0, took = 0;
+  const changed = [], unread = [];
+  for (let i = 0; i < albums.length; i++) {
+    const al = albums[i];
+    out.textContent = `Reading ${i + 1}/${albums.length}: ${al.artist} — ${al.title}`;
+    try {
+      const n = await refreshAlbumFromDrive(al);
+      read++;
+      took += n;
+      if (n) changed.push(`${al.artist} — ${al.title}: ${n}`);
+    } catch (e) {
+      unread.push(`${al.artist} — ${al.title}: ${String(e && e.message || e).slice(0, 160)}`);
+    }
+  }
+  btn.disabled = false;
+  out.textContent =
+    `Read ${read} of ${albums.length} album${albums.length === 1 ? '' : 's'}. ` +
+    `${took} typed entr${took === 1 ? 'y' : 'ies'} taken from Drive onto this phone; photos left as they are; nothing in Drive changed.` +
+    (changed.length ? '\n\nTaken:\n' + changed.join('\n') : '') +
+    (unread.length ? `\n\nCould not read ${unread.length}:\n` + unread.join('\n') : '');
+  toast(`Refreshed from Drive: ${took} typed entr${took === 1 ? 'y' : 'ies'} taken` +
+    (unread.length ? ` · ${unread.length} folder${unread.length === 1 ? '' : 's'} could not be read (listed below)` : ''), 5000);
+}
+
 /* ---------- Google Picker: point the app at an EXISTING Drive folder ----------
  *
  * The app asks for the drive.file scope, which can only see files and folders
@@ -3082,7 +3387,9 @@ $('#btnDrive').onclick = async () => {
       done: 0, total: exportItems.length, queued: Date.now(),
     };
     await dbPut('albums', curAlbum);
-    toast(`Queued ${exportItems.length} files — uploading while you carry on`, 3200);
+    toast(curAlbum.sent && Object.keys(curAlbum.sent).length
+      ? `Queued — checking ${exportItems.length} files against Drive; only what changed goes up while you carry on`
+      : `Queued ${exportItems.length} files — uploading while you carry on`, 3200);
     goHome();
     pumpUploads();
   } catch (e) {
@@ -3102,14 +3409,17 @@ $('#btnDrive').onclick = async () => {
  *   uploading -> files going up; done/total count
  *   paused    -> the Google token ran out and renewing it needs a tap
  *   failed    -> stopped with an error; retry from the home card
+ *   ask       -> a file changed on this phone and in Drive: nothing of the
+ *                album is sent until the collector chooses (the ⇄ button)
  * Finishing writes the manifest LAST, then the album's uploaded stamp, exactly
  * as the foreground upload did. The record is removed once the album is
  * uploaded; the "Uploaded albums" archive reads the stamp, not the record.
  *
  * The queue drains while the app is open on any screen. A phone that locks or
  * switches apps suspends the page; on the next open the queue resumes from
- * where it stopped, and files that went up already are simply replaced, so an
- * interrupted album is safe to run again.
+ * where it stopped. Every file that went up carries its hash (al.sent) the
+ * moment it lands, so a resumed or retried album lists the folder again and
+ * sends only what is not there yet.
  */
 const UPLOAD_PARALLEL = 2;   // files in flight per album: enough to hide the round trip, not enough to starve the camera
 let uploadPumpRunning = false;
@@ -3125,6 +3435,7 @@ function uploadLabel(al) {
   if (u.state === 'uploading') return `☁ Uploading ${u.done}/${u.total}…`;
   if (u.state === 'paused') return '⏸ Upload paused — sign in below to continue';
   if (u.state === 'failed') return '⚠ Upload failed — ' + (u.error || 'tap ↻ to retry');
+  if (u.state === 'ask') return '⇄ Changed on this phone and in Drive — tap ⇄ to choose; nothing sent yet';
   return '';
 }
 // A token with less than two minutes left is not worth starting a file on:
@@ -3140,7 +3451,10 @@ async function uploadQueue() {
 async function setUpload(al, patch) {
   Object.assign(al.upload, patch);
   await dbPut('albums', al);
-  if (curAlbum && curAlbum.id === al.id) curAlbum.upload = al.upload;
+  if (curAlbum && curAlbum.id === al.id) {
+    curAlbum.upload = al.upload;
+    if (al.sent) curAlbum.sent = al.sent;   // a later save of the open album must not put back an older record
+  }
   refreshUploadCards();
 }
 async function pumpUploads() {
@@ -3190,19 +3504,45 @@ async function uploadAlbum(al) {
     }
     const items = await buildExportItems(al);
     if (!items.length) throw new Error('Nothing to upload — no photos or text saved');
-    await setUpload(al, { state: 'uploading', done: 0, total: items.length, error: '' });
+    // The folder is listed ONCE and every file decided before anything goes up
+    // (see "re-upload: only what changed"). A listing or a read that fails
+    // stops the album here with nothing sent - never "Drive has nothing".
+    let rows;
+    try {
+      rows = await planSync(al, items, folder);
+    } catch (e) {
+      throw new Error('Not uploaded: the Drive folder could not be read, so nothing was sent. Tap ↻ to try again. (' +
+        String(e && e.message || e) + ')');
+    }
+    const asks = rows.filter(r => r.act === 'ask');
+    if (asks.length) {
+      // one question for the album, however many files it covers
+      await setUpload(al, { state: 'ask', error: '', ask: asks.map(r => ({
+        name: r.it.name, kind: r.it.kind, shotId: r.it.shotId || '', driveId: r.df.id, p: r.it.hash, d: r.d, why: r.why,
+      })) });
+      toast(`${al.artist} — ${al.title}: changed on this phone and in Drive. Nothing was sent — tap ⇄ on its card to choose.`, 5000);
+      return;
+    }
+    al.sent = al.sent || {};
+    for (const r of rows) {
+      if (r.act === 'heal') al.sent[r.it.name] = await settleText(al, r.it, r.dText);
+      else if (r.act !== 'send') al.sent[r.it.name] = r.it.hash;   // skip, keep, hold: settled as they stand
+    }
+    const sends = rows.filter(r => r.act === 'send');
+    await setUpload(al, { state: 'uploading', done: 0, total: sends.length, error: '', ask: null });
     let next = 0, failed = null, paused = false;
     const worker = async () => {
-      while (next < items.length && !failed && !paused) {
+      while (next < sends.length && !failed && !paused) {
         if (!tokenFresh()) { paused = true; break; }
-        const item = items[next++];
+        const r = sends[next++];
         try {
-          await uploadFile(folder, item.name, item.mime, item.blob);
+          await uploadFile(folder, r.it.name, r.it.mime, r.it.blob);
+          al.sent[r.it.name] = r.it.hash;   // what went up, recorded as it lands: a resumed round skips it
           await setUpload(al, { done: al.upload.done + 1 });
         } catch (e) { failed = e; }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, items.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, sends.length) }, worker));
     if (failed) throw failed;
     if (paused) { await setUpload(al, { state: 'paused' }); return; }
     // Last, so a manifest only ever describes a folder whose photos arrived.
@@ -3211,7 +3551,8 @@ async function uploadAlbum(al) {
     delete al.upload;
     await dbPut('albums', al);
     if (curAlbum && curAlbum.id === al.id) curAlbum = al;
-    toast(`Uploaded ${al.artist} — ${al.title} ✓ (${items.length} files)`, 3600);
+    const said = syncSummary(rows);
+    toast(`Uploaded ${al.artist} — ${al.title} ✓ (${said.head})${said.more}`, said.more ? 7000 : 3600);
     if ($('#scr-home').classList.contains('active')) goHome();
   } catch (e) {
     console.error('upload', al.id, e);
@@ -3237,7 +3578,10 @@ function refreshUploadCards() {
       line.className = 'al-up' + (al.upload ? ' ' + al.upload.state : '');
       line.classList.toggle('hidden', !text);
       card.querySelector('.al-del').classList.toggle('hidden', !!(al.upload && al.upload.state === 'uploading'));
-      card.querySelector('.al-retry').classList.toggle('hidden', !(al.upload && al.upload.state === 'failed'));
+      const state = al.upload && al.upload.state, retry = card.querySelector('.al-retry');
+      retry.classList.toggle('hidden', !(state === 'failed' || state === 'ask'));
+      retry.textContent = state === 'ask' ? '⇄' : '↻';
+      retry.setAttribute('aria-label', state === 'ask' ? 'Choose what to keep' : 'Retry upload');
     });
     const waiting = albums.filter(a => a.upload && a.upload.state === 'paused').length;
     const btn = $('#btnUploadSignin');
@@ -3271,9 +3615,14 @@ async function openArchive() {
   sel.innerHTML = settings.driveFolders
     .map(f => `<option${f === last ? ' selected' : ''}>${esc(f)}</option>`).join('');
   sel.classList.toggle('hidden', settings.driveFolders.length < 2 || !cred('clientId'));
+  // the one-off that takes Drive's typed entries back onto this phone (reads Drive only)
+  $('#btnRefreshDrive').classList.toggle('hidden', !cred('clientId'));
+  $('#refreshHint').classList.toggle('hidden', !cred('clientId'));
+  $('#refreshStatus').textContent = '';
   await loadArchive();
 }
 $('#arcFolder').onchange = () => loadArchive();
+$('#btnRefreshDrive').onclick = () => refreshAllFromDrive();
 
 async function loadArchive() {
   const st = $('#arcStatus'), list = $('#arcList');

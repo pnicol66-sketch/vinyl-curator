@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'vinylcurator-20261022-112904';
+const CACHE = 'vinylcurator-20261029-124531';
 // ORT runtime + model (~15 MB) in their own cache that survives version bumps,
 // so an app update never re-downloads them.
 const MODELCACHE = 'vinylcurator-models-v1';
