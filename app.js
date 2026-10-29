@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261029-143527';
+const APP_VERSION = '20261029-233806';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -3138,7 +3138,11 @@ $('#btnChooseGo').onclick = async () => {
 // Photos stay as they are. It READS only - nothing in Drive is written - and
 // it reads only a folder that is the album's own. Every folder it could not
 // read is named.
-async function refreshAlbumFromDrive(al) {
+// A typed entry the phone changed since its last upload is left as it is: the
+// record of what was sent (al.sent) is no longer the phone's copy, so the next
+// upload settles the two (a question when Drive changed too) - a refresh never
+// puts Drive's text over an edit not yet uploaded. held: the names left so.
+async function refreshAlbumFromDrive(al, held) {
   let f;
   try {
     f = await drive('https://www.googleapis.com/drive/v3/files/' + al.driveFolderId + '?fields=id,name,trashed,createdTime');
@@ -3168,6 +3172,10 @@ async function refreshAlbumFromDrive(al) {
       noted++;
       continue;
     }
+    if (rec && sent[name]) {
+      const mine = await sha256Hex(new Blob([rec.text + '\n'], { type: 'text/plain' }));
+      if (mine !== sent[name]) { if (held) held.push(name); continue; }   // edited on the phone since: the upload settles it
+    }
     sent[name] = await settleText(al, { shotId: def.id }, t);
     took++;
   }
@@ -3192,15 +3200,24 @@ async function refreshAllFromDrive() {
     return toast(e.message, 4500);
   }
   let read = 0, took = 0;
-  const changed = [], unread = [];
+  const changed = [], unread = [], waiting = [], kept = [];
   for (let i = 0; i < albums.length; i++) {
     const al = albums[i];
+    // An album whose upload is waiting on a question, or failed, is the
+    // collector's to settle first: refreshing it would answer for Drive unasked.
+    const ust = al.upload && al.upload.state;
+    if (ust === 'ask' || ust === 'failed') {
+      waiting.push(`${al.artist} — ${al.title}: ` + (ust === 'ask' ? 'its upload is waiting on your choice - answer it first' : 'its upload failed - retry it first'));
+      continue;
+    }
     out.textContent = `Reading ${i + 1}/${albums.length}: ${al.artist} — ${al.title}`;
     try {
-      const n = await refreshAlbumFromDrive(al);
+      const held = [];
+      const n = await refreshAlbumFromDrive(al, held);
       read++;
       took += n;
       if (n) changed.push(`${al.artist} — ${al.title}: ${n}`);
+      if (held.length) kept.push(`${al.artist} — ${al.title}: ${held.join(', ')}`);
     } catch (e) {
       unread.push(`${al.artist} — ${al.title}: ${String(e && e.message || e).slice(0, 160)}`);
     }
@@ -3210,8 +3227,11 @@ async function refreshAllFromDrive() {
     `Read ${read} of ${albums.length} album${albums.length === 1 ? '' : 's'}. ` +
     `${took} typed entr${took === 1 ? 'y' : 'ies'} taken from Drive onto this phone; photos left as they are; nothing in Drive changed.` +
     (changed.length ? '\n\nTaken:\n' + changed.join('\n') : '') +
+    (kept.length ? '\n\nKept as typed on this phone (changed here since the last upload - the next upload settles them):\n' + kept.join('\n') : '') +
+    (waiting.length ? `\n\nNot refreshed ${waiting.length}:\n` + waiting.join('\n') : '') +
     (unread.length ? `\n\nCould not read ${unread.length}:\n` + unread.join('\n') : '');
   toast(`Refreshed from Drive: ${took} typed entr${took === 1 ? 'y' : 'ies'} taken` +
+    (waiting.length ? ` · ${waiting.length} waiting on an upload (listed below)` : '') +
     (unread.length ? ` · ${unread.length} folder${unread.length === 1 ? '' : 's'} could not be read (listed below)` : ''), 5000);
 }
 
