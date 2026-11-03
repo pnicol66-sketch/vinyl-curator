@@ -351,10 +351,17 @@ function openCheckRead(chk) {
   box.innerHTML = '';
   for (const [k, label] of READ_FIELDS) {
     const id = 'rf_' + k;
-    box.insertAdjacentHTML('beforeend',
-      `<label class="field" for="${id}">${esc(label)}</label>` +
-      (k === 'notes' ? `<textarea id="${id}" style="min-height:70px">${esc(String(f[k] || ''))}</textarea>`
-                     : `<input type="text" id="${id}" autocomplete="off" value="${esc(String(f[k] || ''))}">`));
+    let input;
+    if (k === 'notes') input = `<textarea id="${id}" style="min-height:70px">${esc(String(f[k] || ''))}</textarea>`;
+    else if (k === 'coverGrade' || k === 'vinylGrade') {
+      // a grade is picked from the scale the appraiser's sheet reads, never typed (the app's grade picker); a read
+      // grade off the scale is shown as read, to be replaced
+      const v = String(f[k] || '').trim().toUpperCase();
+      const opts = ['<option value="">not graded</option>'].concat(GRADE_SCALE.map(g => `<option${g === v ? ' selected' : ''}>${g}</option>`));
+      if (v && !GRADE_SCALE.includes(v)) opts.push(`<option value="" selected>${esc(v)} (as read - pick a grade)</option>`);
+      input = `<select id="${id}">${opts.join('')}</select>`;
+    } else input = `<input type="text" id="${id}" autocomplete="off" value="${esc(String(f[k] || ''))}">`;
+    box.insertAdjacentHTML('beforeend', `<label class="field" for="${id}">${esc(label)}</label>` + input);
   }
   const warn = (chk.read && chk.read.warn) || [];
   $('#checkReadWarn').innerHTML = warn.map(w => `<p class="hint" style="color:#e0b04a">${esc(w)}</p>`).join('');
@@ -367,7 +374,9 @@ $('#btnCheckConfirm').onclick = () => {
   const chk = curCheck;
   const fields = Object.assign({}, (chk.read && chk.read.fields) || {});
   for (const [k] of READ_FIELDS) fields[k] = $('#rf_' + k).value.trim();
-  fields.asking = chk.asking; fields.shipping = chk.shipping; fields.listingKind = chk.kind;
+  // what was typed wins; a box left blank keeps the price the read found on the photo or the listing (two shop checks
+  // had read $39.99 and $33 and answered "No asking price given")
+  fields.asking = chk.asking || fields.asking || ''; fields.shipping = chk.shipping || fields.shipping || ''; fields.listingKind = chk.kind;
   chk.fields = fields;
   putCheck(chk);
   const go = () => runCheckQuick(chk).catch(e => { $('#checkReadStage').textContent = e.message || String(e); $('#btnCheckConfirm').disabled = false; });

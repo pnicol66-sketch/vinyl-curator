@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261029-233806';
+const APP_VERSION = '20261103-053255';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -287,6 +287,7 @@ async function renderShotList() {
       ? ` <em>· ${esc(rec.text.length > 22 ? rec.text.slice(0, 22) + '…' : rec.text)}</em>`
       : def.opt ? ' <em>· optional</em>' : '';
     if (slotRecs.length) nameExtra += ` <em>· 📷×${slotRecs.length}</em>`;
+    if (def.type === 'grade' && (curAlbum.gradeNotes || {})[def.id]) nameExtra += ' <em>· ✎ note</em>';
     item.innerHTML =
       `<span class="thumb">${thumbChar}</span>` +
       `<span class="shotname">${pad2(def.n)} ${esc(def.name)}${nameExtra}</span>` +
@@ -1909,9 +1910,9 @@ async function openTextEntry(def, rec) {
   if (rec === undefined) rec = await dbGet('shots', [curAlbum.id, def.id]);
   const isGrade = def.type === 'grade';
   $('#inShotTextLabel').textContent = isGrade
-    ? (def.name.includes('Cover') ? 'Cover grade' : 'Vinyl grade for this side')
+    ? 'Or type it — the grade first, then its marks'
     : 'Matrix/Runout text — exactly as etched or stamped';
-  $('#inShotText').placeholder = isGrade ? 'e.g. VG+' : 'e.g. ST-A-681234-B-1';
+  $('#inShotText').placeholder = isGrade ? 'e.g. VG+ DEEP GROOVE' : 'e.g. ST-A-681234-B-1';
   let text = (rec && rec.status === 'text' && rec.text) || '';
   // restore unsaved text after a camera / photo-viewer round-trip
   if (textDraft && textDraft.albumId === curAlbum.id && textDraft.shotId === def.id) {
@@ -1925,8 +1926,24 @@ async function openTextEntry(def, rec) {
   $('#voiceHint').classList.toggle('hidden', !SpeechRec || isGrade);
   $('#voiceHintGrade').classList.toggle('hidden', !SpeechRec || !isGrade);
   $('#photoSection').classList.toggle('hidden', isGrade);
-  if (!isGrade) await renderSlots(def);
-  show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
+  $('#gradeBox').classList.toggle('hidden', !isGrade);
+  $('#gradeNoteBox').classList.toggle('hidden', !isGrade);
+  $('#btnGradeSkip').classList.toggle('hidden', !isGrade);
+  $('#btnTextSave').textContent = isGrade ? 'Save grade' : 'Save text';
+  if (isGrade) {
+    // "Same as side 1" / "Same as front": most copies are one grade throughout, so it is one tap
+    const src = def.id === 'backgrade' ? { id: 'frontgrade', label: 'front' }
+      : /^s[234]grade$/.test(def.id) ? { id: 's1grade', label: 'side 1' } : null;
+    const srcRec = src ? await dbGet('shots', [curAlbum.id, src.id]) : null;
+    const same = srcRec && srcRec.status === 'text' && srcRec.text !== text ? srcRec.text : '';
+    gradeBoxOpen(def, text, (curAlbum.gradeNotes || {})[def.id] || '', same, same ? `Same as ${src.label} (${same})` : '');
+  } else {
+    gradeBoxClose();
+    $('#btnTextSave').disabled = false;
+    $('#btnGradeSame').classList.add('hidden');
+    await renderSlots(def);
+  }
+  show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: () => { gradeBoxClose(); backToAlbum(); } });
 }
 async function renderSlots(def) {
   freeSlotUrls();
@@ -1968,11 +1985,37 @@ $('#btnSlotShoot').onclick = () => {
   openCamera(curShot, Number($('#slotSel').value) || 1);
 };
 $('#btnTextSave').onclick = async () => {
+  if (curShot.type === 'grade') {
+    // the grade as the sheet will read it, never the text as typed; the note goes on the album, never into the grade
+    stopVoice();
+    const res = gradeBoxResult();
+    if (!res.ok) return toast(res.why, 3600);
+    await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'text', text: res.text, when: Date.now() });
+    await setGradeNote(curShot.id, res.note);
+    gradeBoxClose();
+    backToAlbum();
+    return toast('Saved ✓');
+  }
   const t = $('#inShotText').value.trim();
-  if (!t) return toast(curShot.type === 'grade' ? 'Type the grade first, or go back' : 'Type the matrix text first, or go back');
+  if (!t) return toast('Type the matrix text first, or go back');
   await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'text', text: t, when: Date.now() });
   backToAlbum();
   toast('Saved ✓');
+};
+// A grade's condition note lives on the album (album.gradeNotes, by shot id) and goes up in album.json.
+async function setGradeNote(shotId, note) {
+  const notes = Object.assign({}, curAlbum.gradeNotes || {});
+  if (note) notes[shotId] = note; else delete notes[shotId];
+  if (JSON.stringify(notes) === JSON.stringify(curAlbum.gradeNotes || {})) return;
+  curAlbum.gradeNotes = notes;
+  await dbPut('albums', curAlbum);
+}
+$('#btnGradeSkip').onclick = async () => {
+  stopVoice();
+  await dbPut('shots', { albumId: curAlbum.id, shotId: curShot.id, status: 'skipped' });
+  await setGradeNote(curShot.id, '');
+  gradeBoxClose();
+  backToAlbum();
 };
 /* ---------- personal note (per album, private) ---------- */
 function openNote() {
@@ -2109,6 +2152,336 @@ $('#btnUpcClear').onclick = async () => {
   backToAlbum();
   toast('Barcode cleared');
 };
+/* ---------- grade picker (a grade is picked from the scale, never mistyped) ---------- */
+// A grade entry was a text box whose only check was "not empty", and the sheet read what it was given: "VG + DEEP
+// GROOVE" as VG, a step down; "MUSIC BLANK PATTERN EMBOSSED" as no grade, which left the record with no grade at
+// all; "near mint" heard as "name mint". Now the grade is a button from the sheet's own scale, the marks the sheet
+// reads after a grade are buttons too, a condition note has a box of its own (it goes to the sheet's comments,
+// never into the grade), and whatever is typed or dictated is read the way the sheet reads it, with Save held
+// until it is one grade and words the sheet knows.
+
+// The sheet's grade scale, best first, with the values its average uses (a check holds the two equal).
+const GRADE_VALUE = { 'M': 14, 'M-': 13, 'NM': 12, 'NM-': 11, 'EX+': 10, 'EX': 9, 'VG+': 8, 'VG': 7, 'VG-': 6, 'G+': 5, 'G': 4, 'G-': 3, 'F': 2, 'P': 1 };
+const GRADE_SCALE = Object.keys(GRADE_VALUE);
+const GRADE_MAIN = ['M', 'NM', 'NM-', 'EX', 'VG+', 'VG', 'G+', 'G'];   // the rest under "More grades"
+// An entry that is no grade on purpose: the sheet leaves it out of the average and does not flag it. The cover's two
+// besides Sealed are the collector's own words for a record that came without its jacket ("NIL" on a test pressing)
+// or in a jacket not its own ("GENERIC COVER").
+const GRADE_STATES = {
+  vinyl: [{ text: 'NO MUSIC', label: 'No music (etched or blank side)' }],
+  cover: [{ text: 'SEALED', label: 'Sealed (unopened)' }, { text: 'NO COVER', label: 'No cover (record only)' },
+    { text: 'GENERIC COVER', label: 'Generic cover (not its own jacket)' }],
+};
+// >>> GRADE_MARKS (generated from the sheet's list of the marks it reads after a grade - do not edit by hand;
+// the full test run fails when this block and that list differ)
+const GRADE_MARKS = [
+  { mark: "DEEP GROOVE", on: "vinyl", more: false, label: "", excl: "dg", also: ["DG", "DEEP-GROOVE"] },
+  { mark: "DEEP GROOVE 1 SIDE ONLY", on: "vinyl", more: false, label: "", excl: "dg", also: ["DEEP GROOVE SIDE 1", "DEEP GROOVE ON SIDE 1"] },
+  { mark: "PROMO", on: "vinyl", more: false, label: "", excl: "", also: ["PROMO LABEL", "NOT FOR SALE", "PROMOTIONAL", "WHITE LABEL", "DJ COPY", "DEMO COPY", "NFS"] },
+  { mark: "TEST PRESSING", on: "vinyl", more: false, label: "", excl: "", also: [] },
+  { mark: "NUMBERED", on: "vinyl", more: false, label: "", excl: "", also: ["NUMBERED LIMITED EDITION", "LIMITED"] },
+  { mark: "LIMITED EDITION", on: "vinyl", more: false, label: "", excl: "", also: [] },
+  { mark: "ORIGINAL SLEEVE", on: "vinyl", more: false, label: "", excl: "", also: ["ORIGINAL INNER SLEEVE"] },
+  { mark: "6 EYE", on: "vinyl", more: true, label: "Columbia", excl: "eye", also: ["6-EYE", "SIX EYE"] },
+  { mark: "2 EYE", on: "vinyl", more: true, label: "Columbia", excl: "eye", also: ["TWO EYE"] },
+  { mark: "TRUMPETER LABEL", on: "vinyl", more: true, label: "Verve", excl: "", also: [] },
+  { mark: "SILVER BAND", on: "vinyl", more: true, label: "EmArcy", excl: "", also: ["SILVER RIM"] },
+  { mark: "IN SHRINK", on: "cover", more: false, label: "", excl: "", also: ["IN ORIGINAL SHRINK", "UNOPENED BY SHRINK", "PARTIAL SHRINK"] },
+  { mark: "BLUE BACK", on: "cover", more: true, label: "EmArcy", excl: "", also: [] },
+];
+const GRADE_KNOWN = [
+  "180 GRAM", "180G", "2 EYE", "45 RPM", "6 EYE", "6-EYE", "BLUE BACK", "DEEP GROOVE", "DEEP GROOVE 1 SIDE ONLY",
+  "DEEP GROOVE ON SIDE 1", "DEEP GROOVE SIDE 1", "DEEP-GROOVE", "DEMO COPY", "DG", "DJ COPY", "DRUMMER",
+  "DRUMMER-LOGO", "EMBLEM", "GATEFOLD", "IN ORIGINAL SHRINK", "IN SHRINK", "LIMITED", "LIMITED EDITION",
+  "MERCURY EMBLEM", "MONO", "NFS", "NOT FOR SALE", "NUMBERED", "NUMBERED LIMITED EDITION", "ORIGINAL INNER SLEEVE",
+  "ORIGINAL SLEEVE", "PARTIAL SHRINK", "PROMO", "PROMO LABEL", "PROMOTIONAL", "RECORD CLUB EDITION", "SHIELD",
+  "SILVER BAND", "SILVER RIM", "SIX EYE", "STEREO", "TEST PRESSING", "TRUMPETER LABEL", "TWO EYE", "UNOPENED BY SHRINK",
+  "WHITE LABEL", "YMG",
+];
+// <<< GRADE_MARKS
+
+// A grade where the sheet's own tokens begin (the off-scale signs included, so they can be named).
+const GRADE_TOKEN_RE = /^(M-|M|NM\+|NM-|NM|EX\+\+|EX\+|EX-|EX|VG\+\+|VG\+|VG-|VG|G\+\+|G\+|G-|G|F\+|F-|F|P\+|P-|P)(?![A-Z0-9])/;
+const GRADE_SECOND_RE = /^\s*\/?\s*(M-|M|NM\+|NM-|NM|EX\+|EX-|EX|VG\+\+|VG\+|VG-|VG|G\+|G-|G|F|P)(?![A-Z0-9])/;
+// Grade words typed out, written as the sheet writes them. "name mint" is the speech engine's near mint.
+const GRADE_WORDS = [
+  [/^(?:NEAR|NAME)[\s-]*MINT(?![A-Z])/, 'NM'], [/^MINT(?![A-Z])/, 'M'], [/^EXCELLENT(?![A-Z])/, 'EX'],
+  [/^VERY[\s-]*GOOD(?![A-Z])/, 'VG'], [/^GOOD(?![A-Z])/, 'G'], [/^FAIR(?![A-Z])/, 'F'], [/^POOR(?![A-Z])/, 'P'],
+];
+function gradeUpper(s) { return String(s == null ? '' : s).toUpperCase().replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ').trim(); }
+function gradeSquash(s) { return gradeUpper(s).replace(/[\s-]+/g, ' '); }
+function gradeOn(def) { return /cover/i.test(def && def.name || '') ? 'cover' : 'vinyl'; }
+function gradeMarksFor(on) { return GRADE_MARKS.filter(m => m.on === on); }
+// The scale steps either side of an off-scale grade: EX- -> EX, VG+; NM+ -> NM, M-; VG++ -> VG+, EX.
+function gradeNearSteps(tok) {
+  const m = /^(M|NM|EX|VG|G|F|P)([+-]+)$/.exec(tok);
+  if (!m) return [];
+  const out = [], shorter = tok.slice(0, -1);
+  if (GRADE_VALUE[shorter]) out.push(shorter);
+  let v = GRADE_VALUE[m[1]];
+  for (const c of m[2]) v += c === '+' ? 1 : -1;
+  const at = GRADE_SCALE.find(g => GRADE_VALUE[g] === v);
+  if (at && !out.includes(at)) out.push(at);
+  return out;
+}
+function gradeEditDistance(a, b) {
+  const d = [];
+  for (let i = 0; i <= a.length; i++) { d.push([i]); }
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return d[a.length][b.length];
+}
+// Every form the sheet reads after a grade, longest first: the buttons, their other spellings, and every other form
+// and negation the sheet's list carries.
+let gradeFormsCache = null;
+function gradeForms() {
+  if (gradeFormsCache) return gradeFormsCache;
+  const seen = {}, out = [];
+  const add = f => { const s = gradeSquash(f); if (s && !seen[s]) { seen[s] = true; out.push(s); } };
+  for (const m of GRADE_MARKS) { add(m.mark); m.also.forEach(add); }
+  GRADE_KNOWN.forEach(add);
+  gradeFormsCache = out.sort((a, b) => b.length - a.length);
+  return gradeFormsCache;
+}
+function gradeFormRe(form) {
+  const pat = form.split(' ').map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s-]*');
+  return new RegExp('(^|[^A-Z0-9])(' + pat + ')(?![A-Z0-9])', 'g');
+}
+// Pure. What an entry says, read the way the sheet reads it:
+//   { norm: the text as written with the grade words and a loose sign fixed, grade, state, leadLen,
+//     items: [{at, text, kind}] (the marks and the words kept, where they stand in norm),
+//     problems: [{kind, msg, choices?, ...}] (each holds Save), infos: [what was rewritten], text: what is saved, ok }
+// keep: the words the collector chose to keep beside the grade though the sheet does not read them.
+function gradeRead(text, on, keep) {
+  keep = keep || {};
+  const out = { norm: '', grade: '', state: '', leadLen: 0, items: [], problems: [], infos: [], text: '', ok: false };
+  let t = gradeUpper(text);
+  for (const [re, code] of GRADE_WORDS) {
+    const m = re.exec(t);
+    if (m) { t = code + t.slice(m[0].length); out.infos.push('“' + m[0] + '” is written ' + code); break; }
+  }
+  const sw = /^(M|NM|EX|VG|G|F|P) ?(PLUS|MINUS)(?![A-Z])/.exec(t);
+  if (sw) t = sw[1] + (sw[2] === 'PLUS' ? '+' : '-') + t.slice(sw[0].length);
+  const sp = /^(M|NM|EX|VG|G|F|P) ([+-])(?=\s|\/|$)/.exec(t);
+  if (sp) { t = sp[1] + sp[2] + t.slice(sp[0].length); out.infos.push('“' + sp[0] + '” is read as ' + sp[1] + sp[2]); }
+  out.norm = t;
+  if (!t) { out.problems.push({ kind: 'empty', msg: 'Pick a grade.' }); return out; }
+  const states = (GRADE_STATES[on] || []).map(s => s.text).concat(['NOT GRADED']);
+  for (const s of states) {
+    if (t === s) { out.state = s; out.text = s; out.ok = true; return out; }
+    if (t.indexOf(s + ' ') === 0) {
+      out.state = s;
+      out.problems.push({ kind: 'state', msg: s + ' stands alone - marks go with a grade.', choices: [s] });
+      return out;
+    }
+  }
+  let restAt = 0;
+  const lm = GRADE_TOKEN_RE.exec(t);
+  if (!lm) {
+    out.problems.push({ kind: 'nograde', msg: 'No grade at the start - tap one above' + (on === 'vinyl' ? ', or “No music” for an etched or blank side' : on === 'cover' ? ', or “Sealed”, “No cover” or “Generic cover”' : '') + '.' });
+  } else if (!GRADE_VALUE[lm[1]]) {
+    out.problems.push({ kind: 'offscale', msg: lm[1] + ' is not on the sheet’s grade scale - which is it?', choices: gradeNearSteps(lm[1]), cut: lm[1].length });
+    restAt = lm[1].length;
+  } else {
+    out.grade = lm[1];
+    out.leadLen = restAt = lm[1].length;
+    const two = GRADE_SECOND_RE.exec(t.slice(restAt));
+    if (two) {
+      out.problems.push({ kind: 'two', msg: 'Two grades - one side takes one. Which is it?', choices: [lm[1]].concat(GRADE_VALUE[two[1]] && two[1] !== lm[1] ? [two[1]] : []), cut: restAt + two[0].length });
+      restAt += two[0].length;
+    }
+  }
+  // the marks, longest first, each where it was typed
+  let work = t.slice(0, restAt).replace(/./g, ' ') + t.slice(restAt);
+  for (const f of gradeForms()) {
+    const re = gradeFormRe(f);
+    let m;
+    while ((m = re.exec(work))) {
+      const at = m.index + m[1].length;
+      out.items.push({ at, text: m[2].replace(/\s+/g, ' '), kind: 'mark' });
+      work = work.slice(0, at) + ' '.repeat(m[2].length) + work.slice(at + m[2].length);
+      re.lastIndex = at + m[2].length;
+    }
+  }
+  // what is left: a near miss of a form the sheet reads, a word kept on purpose, or a word to move or keep
+  const words = [], wre = /[A-Z0-9][A-Z0-9'.&+#\-]*/g;
+  let w;
+  while ((w = wre.exec(work))) words.push({ at: w.index, text: w[0] });
+  const unknown = [];
+  for (let i = 0; i < words.length; i++) {
+    let hit = null;
+    for (let n = Math.min(3, words.length - i); n >= 1 && !hit; n--) {
+      const win = words.slice(i, i + n);
+      if (win.some((x, k) => k && x.at !== win[k - 1].at + win[k - 1].text.length + 1)) continue;   // one run of words
+      const phrase = win.map(x => x.text).join(' ');
+      if (keep[phrase]) { hit = { n, kept: phrase }; break; }
+      for (const f of gradeForms()) {
+        const allowed = f.length >= 8 ? 2 : f.length >= 5 ? 1 : 0;
+        if (!allowed || Math.abs(f.length - phrase.length) > allowed) continue;
+        const dist = gradeEditDistance(phrase, f);
+        if (dist > 0 && dist <= allowed) { hit = { n, from: phrase, to: f }; break; }
+      }
+    }
+    if (hit && hit.kept) { out.items.push({ at: words[i].at, text: hit.kept, kind: 'kept' }); i += hit.n - 1; continue; }
+    if (hit) {
+      out.items.push({ at: words[i].at, text: hit.from, kind: 'near' });
+      out.problems.push({ kind: 'near', msg: '“' + hit.from + '” - did you mean ' + hit.to + '?', from: hit.from, to: hit.to, at: words[i].at });
+      i += hit.n - 1;
+      continue;
+    }
+    unknown.push(words[i]);
+  }
+  if (unknown.length) {
+    out.problems.push({ kind: 'unknown', msg: '“' + unknown.map(x => x.text).join(' ') + '” is not a mark the sheet reads after a grade.', words: unknown });
+  }
+  out.items.sort((a, b) => a.at - b.at);
+  out.text = [out.grade].concat(out.items.map(i => i.text)).filter(Boolean).join(' ');
+  out.ok = !out.problems.length && !!out.grade;
+  return out;
+}
+// Is this button's mark in the entry (as itself or as one of its other spellings)?
+function gradeChipOn(m, r) {
+  const forms = [m.mark].concat(m.also).map(gradeSquash);
+  return r.items.some(i => i.kind === 'mark' && forms.includes(gradeSquash(i.text)));
+}
+// The note box's text, tidied.
+function gradeNoteClean(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+
+let gradeUi = null;   // the grade entry on screen: { def, on, keep, more, moreMarks, sameText, read }
+function gradeBoxOpen(def, text, note, sameText, sameLabel) {
+  gradeUi = { def, on: gradeOn(def), keep: {}, more: false, moreMarks: false, sameText: sameText || '', read: null };
+  $('#inShotText').value = text || '';
+  $('#inGradeNote').value = note || '';
+  $('#gradeBoxHead').textContent = gradeUi.on === 'cover' ? 'Cover grade' : 'Vinyl grade for this side';
+  const sb = $('#btnGradeSame');
+  sb.textContent = sameLabel || '';
+  sb.classList.toggle('hidden', !sameText);
+  // an entry already holding a rarer grade or a label-specific mark opens with it in view
+  const r = gradeRead(text, gradeUi.on, gradeUi.keep);
+  gradeUi.more = !!(r.grade && !GRADE_MAIN.includes(r.grade)) || r.problems.some(p => p.kind === 'offscale');
+  gradeUi.moreMarks = gradeMarksFor(gradeUi.on).some(m => m.more && gradeChipOn(m, r));
+  gradeRender();
+}
+function gradeBoxClose() { gradeUi = null; }
+function gradeSetText(t) { $('#inShotText').value = gradeUpper(t); gradeRender(); }
+function gradeRender() {
+  if (!gradeUi) return;
+  const on = gradeUi.on, r = gradeRead($('#inShotText').value, on, gradeUi.keep);
+  gradeUi.read = r;
+  const grid = $('#gradeGrid');
+  grid.innerHTML = '';
+  for (const g of (gradeUi.more ? GRADE_SCALE : GRADE_MAIN)) {
+    const b = document.createElement('button');
+    b.className = 'gradebtn' + (r.grade === g ? ' on' : '');
+    b.textContent = g;
+    b.dataset.grade = g;
+    b.onclick = () => gradeSetGrade(g);
+    grid.appendChild(b);
+  }
+  $('#btnGradeMore').textContent = gradeUi.more ? 'Fewer grades' : 'More grades (M-, EX+, VG-, G-, F, P)';
+  const st = $('#gradeStates');
+  st.innerHTML = '';
+  for (const s of GRADE_STATES[on] || []) {
+    const b = document.createElement('button');
+    b.className = 'gradestate' + (r.state === s.text ? ' on' : '');
+    b.textContent = s.label;
+    b.dataset.state = s.text;
+    b.onclick = () => gradeSetText(r.state === s.text ? '' : s.text);
+    st.appendChild(b);
+  }
+  const chips = $('#gradeChips');
+  chips.innerHTML = '';
+  for (const m of gradeMarksFor(on)) {
+    if (m.more && !gradeUi.moreMarks) continue;
+    const b = document.createElement('button');
+    b.className = 'gradechip' + (gradeChipOn(m, r) ? ' on' : '');
+    b.innerHTML = esc(m.mark) + (m.label ? ' <em>' + esc(m.label) + '</em>' : '');
+    b.dataset.mark = m.mark;
+    b.onclick = () => gradeToggleMark(m);
+    chips.appendChild(b);
+  }
+  const mm = $('#btnGradeMoreMarks');
+  mm.classList.toggle('hidden', !gradeMarksFor(on).some(m => m.more));
+  mm.textContent = gradeUi.moreMarks ? 'Fewer marks' : 'More marks (a label’s own)';
+  const ra = $('#gradeReads');
+  ra.className = 'gradereads ' + (r.ok ? 'ok' : 'bad');
+  ra.textContent = r.ok ? 'Reads as: ' + (r.state || [r.grade].concat(r.items.map(i => i.text)).join(' · ')) : 'Not ready to save yet';
+  const box = $('#gradeIssues');
+  box.innerHTML = '';
+  for (const inf of r.infos) {
+    const d = document.createElement('div');
+    d.className = 'gradeinfo';
+    d.textContent = inf;
+    box.appendChild(d);
+  }
+  for (const p of r.problems) {
+    const d = document.createElement('div');
+    d.className = 'gradeissue';
+    d.dataset.kind = p.kind;
+    d.textContent = p.msg;
+    let row = null;
+    const fix = (label, fn) => {
+      if (!row) { row = document.createElement('div'); d.appendChild(row); }
+      const b = document.createElement('button');
+      b.className = 'gradefix';
+      b.textContent = label;
+      b.onclick = fn;
+      row.appendChild(b);
+    };
+    if (p.kind === 'offscale' || p.kind === 'two') for (const c of p.choices) fix(c, () => gradeSetText(c + r.norm.slice(p.cut)));
+    if (p.kind === 'state') fix('Keep ' + p.choices[0] + ' alone', () => gradeSetText(p.choices[0]));
+    if (p.kind === 'near') {
+      fix('Yes, ' + p.to, () => gradeSetText(r.norm.slice(0, p.at) + p.to + r.norm.slice(p.at + p.from.length)));
+      fix('Keep as typed', () => { gradeUi.keep[p.from] = true; gradeRender(); });
+    }
+    if (p.kind === 'unknown') {
+      fix('Move to the note', () => {
+        let t = r.norm;
+        for (const x of p.words.slice().sort((a, b) => b.at - a.at)) t = t.slice(0, x.at) + t.slice(x.at + x.text.length);
+        const moved = p.words.map(x => x.text).join(' ').toLowerCase();
+        const note = gradeNoteClean($('#inGradeNote').value);
+        $('#inGradeNote').value = note ? note + '; ' + moved : moved.charAt(0).toUpperCase() + moved.slice(1);
+        gradeSetText(t);
+      });
+      fix('Keep with the grade', () => { for (const x of p.words) gradeUi.keep[x.text] = true; gradeRender(); });
+    }
+    box.appendChild(d);
+  }
+  $('#btnTextSave').disabled = !r.ok;
+}
+function gradeSetGrade(g) {
+  const r = gradeUi.read || gradeRead($('#inShotText').value, gradeUi.on, gradeUi.keep);
+  if (r.state) return gradeSetText(g);
+  if (r.leadLen) return gradeSetText(g + r.norm.slice(r.leadLen));
+  const off = r.problems.find(p => p.kind === 'offscale');
+  if (off) return gradeSetText(g + r.norm.slice(off.cut));
+  gradeSetText(g + (r.norm ? ' ' + r.norm : ''));
+}
+function gradeToggleMark(m) {
+  const r = gradeUi.read || gradeRead($('#inShotText').value, gradeUi.on, gradeUi.keep);
+  let t = r.state ? '' : r.norm;
+  const strip = mk => { for (const f of [mk.mark].concat(mk.also)) t = t.replace(gradeFormRe(gradeSquash(f)), '$1'); };
+  if (gradeChipOn(m, r)) strip(m);
+  else {
+    if (m.excl) for (const o of GRADE_MARKS) if (o !== m && o.excl === m.excl) strip(o);
+    t = t + ' ' + m.mark;
+  }
+  gradeSetText(t);
+}
+// Save's half: the entry as the sheet will read it, or why it cannot be saved yet.
+function gradeBoxResult() {
+  const r = gradeRead($('#inShotText').value, gradeUi.on, gradeUi.keep);
+  if (!r.ok) return { ok: false, why: r.problems.length ? r.problems[0].msg : 'Pick a grade.' };
+  return { ok: true, text: r.text, note: gradeNoteClean($('#inGradeNote').value) };
+}
+$('#inShotText').addEventListener('input', () => { if (gradeUi) gradeRender(); });
+$('#btnGradeMore').onclick = () => { gradeUi.more = !gradeUi.more; gradeRender(); };
+$('#btnGradeMoreMarks').onclick = () => { gradeUi.moreMarks = !gradeUi.moreMarks; gradeRender(); };
+$('#btnGradeSame').onclick = () => { if (gradeUi && gradeUi.sameText) gradeSetText(gradeUi.sameText); };
 /* ---------- voice dictation (matrix/runout) ---------- */
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 let speech = null;
@@ -2288,8 +2661,9 @@ function voiceToGrade(s) {
   // drop filler so "near mint condition" / "excellent copy" still resolve
   t = t.replace(/\b(?:condition|copy|grade|graded|record|vinyl|disc|it's|its|looks?)\b/g, ' ');
   // the engine mangles "near mint" into "near me" / "nearly" / "near meat" /
-  // "near mid" etc. In a grade box a leading "near m..." can only be near mint.
-  t = t.replace(/\bnear(?:ly\b|\s+m\w*)/g, ' near mint ');
+  // "near mid" etc. In a grade box a leading "near m..." can only be near mint -
+  // and so can "name mint" (heard on a back cover's "near mint with biography").
+  t = t.replace(/\b(?:near(?:ly\b|\s+m\w*)|name\s+m\w*)/g, ' near mint ');
   let mod = '';
   if (/\bplus\b|\+/.test(t)) mod = '+';
   else if (/\b(?:minus|dash|hyphen)\b|-/.test(t)) mod = '-';
@@ -2354,6 +2728,7 @@ function paintVoice(interim) {
   if (!ta) return;
   const iv = interim ? voiceMap(interim) : '';
   ta.value = voiceBase + (iv ? (voiceBase ? ' ' : '') + iv : '');
+  ta.dispatchEvent(new Event('input'));   // a box that reads its text as it changes (the grade picker) reads dictation too
 }
 // Full teardown. Other screens call this to cancel dictation on navigation, so it must
 // be a no-op on the text box unless a session was actually running (else it would repaint
@@ -2459,6 +2834,7 @@ $('#btnTitleVoice').onclick = () => beginDictation('#inTitle', '#btnTitleVoice',
 $('#btnTextDelete').onclick = async () => {
   if (!confirm('Delete this text entry?')) return;
   await dbDel('shots', [curAlbum.id, curShot.id]);
+  if (curShot.type === 'grade') { await setGradeNote(curShot.id, ''); gradeBoxClose(); }
   backToAlbum();
 };
 
@@ -2865,6 +3241,27 @@ async function maybeCropNotice() {
 // added to keep two copies apart arrived in the sheet as part of the album
 // title and went out on eBay and Discogs listings that way. The manifest says
 // what the album is; the folder name goes back to being just a name.
+// The grades' condition notes as album.json carries them: by the grade's shot number (2 and 4 the covers, 7-13 the
+// sides), only the sides this album has. The sheet writes them into Cover Comments and Vinyl Comments.
+function gradeNotesManifest(album) {
+  const out = {};
+  for (const def of SHOTS) {
+    if (def.type !== 'grade' || def.disc > (album.discs || 1)) continue;
+    const t = String(((album.gradeNotes || {})[def.id]) || '').trim();
+    if (t) out[String(def.n)] = t;
+  }
+  return out;
+}
+// ...and back from a folder's album.json onto an album brought back from Drive.
+function gradeNotesFromManifest(manifest) {
+  const out = {}, g = manifest && manifest.gradeNotes;
+  if (!g || typeof g !== 'object') return out;
+  for (const def of SHOTS) {
+    const t = def.type === 'grade' ? String(g[String(def.n)] || '').trim() : '';
+    if (t) out[def.id] = t;
+  }
+  return out;
+}
 async function writeAlbumManifest(folder, album) {
   const manifest = {
     vinylCurator: 1,
@@ -2874,6 +3271,7 @@ async function writeAlbumManifest(folder, album) {
     discs: album.discs || 1,
     personalNote: (album.personalNote || '').trim(),
     upc: (album.upc || '').trim(),
+    gradeNotes: gradeNotesManifest(album),
     updated: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
@@ -3863,6 +4261,7 @@ async function reimportAlbum(f) {
       created: Date.now(),
       upc: upcCheck(manifest && manifest.upc) || '',
       personalNote: String((manifest && manifest.personalNote) || ''),
+      gradeNotes: gradeNotesFromManifest(manifest),
       driveFolderName: $('#arcFolder').value || settings.driveFolder,
       driveFolderId: f.id,
       // linked to that folder, but not its owner until the collector says it

@@ -319,6 +319,26 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
 #checkSummary { color: var(--dim); font-size: 13.5px; margin: 12px 0 6px; line-height: 1.45; }
 .v-line { font-size: 12.5px; color: var(--dim); padding: 6px 0; border-bottom: 1px solid var(--line); }
 .v-row { display: flex; flex-direction: column; gap: 3px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
+/* grade picker */
+.gradegrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 4px 0 6px; }
+.gradebtn, .gradechip, .gradestate, .gradefix {
+  border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 12px;
+  padding: 12px 6px; font-size: 16px; font-weight: 700;
+}
+.gradebtn.on, .gradestate.on { background: var(--accent); color: #191204; border-color: var(--accent); }
+.gradechips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 6px; }
+.gradechip { padding: 9px 12px; font-size: 14px; font-weight: 600; border-radius: 999px; }
+.gradechip.on { background: #2c4a33; border-color: #6fd97e; color: #b9f0c2; }
+.gradechip em { font-style: normal; font-weight: 400; color: var(--dim); font-size: 12px; }
+.gradestates { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.gradestate { padding: 9px 12px; font-size: 14px; font-weight: 600; }
+.gradelink { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 6px 0; }
+.gradereads { font-size: 15px; margin: 14px 0 4px; min-height: 20px; }
+.gradereads.ok { color: #6fd97e; }
+.gradereads.bad { color: #ff9d6b; }
+.gradeissue { background: var(--card); border: 1px solid #6b4a2c; border-radius: 12px; padding: 10px 12px; margin: 8px 0; font-size: 14px; line-height: 1.4; }
+.gradeissue .gradefix { padding: 8px 12px; font-size: 14px; margin: 8px 8px 0 0; }
+.gradeinfo { color: var(--dim); font-size: 13px; margin: 4px 0; }
 .v-row b { font-size: 12.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
 /* toast */
 #toast {
@@ -440,10 +460,25 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
     dash - · slash / · dot . · hash # · star * · plus + · equals = · triangle △ · square □ · circle ○ · diamond ◇ · bracket ( and, said again, ) · space types a space.<br>
     Named stamps type as Discogs writes them: “Sonic Arts logo” (or symbol, stamp, mark) ⊏◯⊐ · “anvil” (Capitol Scranton) [Anvil symbol] · “Monarch logo” (or “MR logo”, “MR in a circle”) [MR logo] · “Specialty logo” (or “SRC logo”) SRC · “Keel logo” (or “air force logo”) ⊂◯⊃ · “IAM triangle” (or “triangle I A M”) IAM · a letter in a circle: “circled U” (or “U in a circle”) Ⓤ, likewise K Ⓚ, H Ⓗ and P ℗.<br>
     For letters it keeps mishearing, use the phonetic alphabet — “alpha… bravo… charlie…” → A B C. It stays listening through pauses; tap again to stop, then fix anything by typing.</div>
-  <div id="voiceHintGrade" class="hidden">Say the grade — words work best: “mint”, “near mint”, “E X”, “very good plus”, “good minus”, “E X deep groove”. “plus”/“minus” become <b>+</b> / <b>−</b>, and “deep groove” is written out. It stays listening through pauses; tap again to stop, then fix anything by typing.</div>
+  <div id="gradeBox" class="hidden">
+    <h2 class="sect" id="gradeBoxHead" style="margin-top:4px">Grade</h2>
+    <div class="gradegrid" id="gradeGrid"></div>
+    <button id="btnGradeMore" class="gradelink">More grades</button>
+    <div class="gradestates" id="gradeStates"></div>
+    <h2 class="sect">Marks <span style="text-transform:none;letter-spacing:0">(tap any that apply)</span></h2>
+    <div class="gradechips" id="gradeChips"></div>
+    <button id="btnGradeMoreMarks" class="gradelink">More marks</button>
+    <div id="gradeReads" class="gradereads"></div>
+    <div id="gradeIssues"></div>
+  </div>
   <label class="field" for="inShotText" id="inShotTextLabel">Matrix/Runout text — exactly as etched or stamped</label>
   <textarea id="inShotText" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. ST-A-681234-B-1"></textarea>
   <button id="btnTextVoice" class="secondary hidden" data-idle="🎤 Dictate it" style="margin-top:10px">🎤 Dictate it</button>
+  <div id="voiceHintGrade" class="hidden" style="color:var(--dim);font-size:12.5px;margin-top:8px;line-height:1.45">Or say it — words work best: “near mint”, “E X”, “very good plus”, “E X deep groove”. “plus”/“minus” become <b>+</b> / <b>−</b>. What you say is read the same way as a tap, and anything the sheet would not read is asked about above.</div>
+  <div id="gradeNoteBox" class="hidden">
+    <label class="field" for="inGradeNote">Condition note (optional) — kept out of the grade</label>
+    <textarea id="inGradeNote" autocomplete="off" autocapitalize="sentences" spellcheck="true" placeholder="e.g. light superficial marks · scratch on track 2 · seam split at the top"></textarea>
+  </div>
   <div id="photoSection" class="hidden">
     <h2 class="sect" style="margin-top:22px">Matrix/Runout photos (optional)</h2>
     <div class="slotrow">
@@ -460,6 +495,8 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   <div style="height:20px"></div>
   <div class="stack">
     <button id="btnTextSave" class="primary">Save text</button>
+    <button id="btnGradeSame" class="secondary hidden">Same as side 1</button>
+    <button id="btnGradeSkip" class="secondary hidden">Not graded</button>
     <button id="btnTextDelete" class="secondary danger hidden">Delete this entry</button>
   </div>
 </section>
