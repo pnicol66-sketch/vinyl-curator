@@ -365,9 +365,53 @@ function openCheckRead(chk) {
   }
   const warn = (chk.read && chk.read.warn) || [];
   $('#checkReadWarn').innerHTML = warn.map(w => `<p class="hint" style="color:#e0b04a">${esc(w)}</p>`).join('');
+  renderCheckIdentity((chk.read && chk.read.identity) || null);
   $('#checkReadStage').textContent = '';
   $('#btnCheckConfirm').disabled = false;
+  $('#btnCheckRecheck').disabled = false;
   show('scr-checkread', { title: 'Is this the record?', back: () => { chk.stage = 'shots'; putCheck(chk); openCheck(chk); } });
+}
+
+// What the record is, as the appraiser's sheet worked it out from the photos - every sentence composed there; the
+// app only lays it out.
+const SETTLED_TEXT = { 'settled': 'Settled', 'likely': 'Likely', "can't tell": "Can't tell from these photos" };
+function renderCheckIdentity(id) {
+  const box = $('#checkIdentity');
+  if (!id) { box.innerHTML = ''; return; }
+  const row = (k, v) => (v ? `<div class="v-row"><b>${esc(k)}</b><span>${esc(String(v))}</span></div>` : '');
+  box.innerHTML = `<div class="verdict grey"><div class="v-level">${esc(SETTLED_TEXT[id.settled] || '')}</div>` +
+    `<div class="v-name">${esc(id.what || '')}</div>${id.tells ? `<div class="v-text">${esc(id.tells)}</div>` : ''}</div>` +
+    (id.questions || []).map(x => `<p class="hint" style="color:#e0b04a">${esc(x)}</p>`).join('') +
+    row('The label', id.design) + row('Not before', id.floor) + row('Not in the photos', id.notVisible) +
+    ((id.lookAt || []).length ? `<div class="v-row"><b>To be sure, look at</b><span>${id.lookAt.map(esc).join('<br>')}</span></div>` : '');
+}
+
+// Add the runout, check again: the same photos and reads, the typed dead wax given to the sheet - seconds.
+$('#btnCheckRecheck').onclick = () => {
+  const chk = curCheck;
+  const a = $('#rf_runoutA').value.trim(), b = $('#rf_runoutB').value.trim();
+  if (!a && !b) { $('#checkReadStage').textContent = 'Type the runout first - side 1, side 2 or both.'; return; }
+  const go = () => runCheckRecheck(chk, a, b).catch(e => { $('#checkReadStage').textContent = e.message || String(e); $('#btnCheckRecheck').disabled = false; });
+  if (checkTokenFresh()) go();
+  else requestCheckToken().then(go).catch(e => { $('#checkReadStage').textContent = 'Sign-in needed: ' + (e.message || e); });
+};
+async function runCheckRecheck(chk, a, b) {
+  $('#btnCheckRecheck').disabled = true;
+  const typed = {};
+  for (const [k] of READ_FIELDS) typed[k] = $('#rf_' + k).value.trim();
+  const t0 = Date.now();
+  $('#checkReadStage').textContent = 'Checking again with the runout…';
+  const r = await checkRun(chk, 'read', { recheck: true, runoutA: a, runoutB: b }, () => { $('#checkReadStage').textContent = `Checking again with the runout… ${Math.round((Date.now() - t0) / 1000)} s`; });
+  const read = r.answer ? r.answer.read : (r.status && r.status.read);
+  if (!read) throw new Error('The answer did not come back - tap Check again');
+  // the new answer's fields, except a box the collector changed since the last read - their correction stands
+  const old = (chk.read && chk.read.fields) || {}, merged = Object.assign({}, read.fields || {});
+  for (const [k] of READ_FIELDS) if (String(typed[k] || '') !== String(old[k] || '')) merged[k] = typed[k];
+  merged.runoutA = a; merged.runoutB = b;
+  read.fields = merged;
+  chk.read = read; chk.stage = 'read';
+  await putCheck(chk);
+  openCheckRead(chk);
 }
 
 $('#btnCheckConfirm').onclick = () => {
@@ -407,7 +451,7 @@ async function writeCheckRow(chk) {
     const r = await checkRun(chk, 'row', {});
     const q = r.answer ? r.answer.quick : (r.status && r.status.quick);
     if (q && q.key) { chk.quick = Object.assign(chk.quick, q); await putCheck(chk); }
-    if (curCheck && curCheck.id === chk.id && $('#scr-checkresult').classList.contains('active')) renderCheckFull(chk);
+    if (curCheck && curCheck.id === chk.id && $('#scr-checkresult').classList.contains('active')) { renderCheckVerdict(chk); renderCheckFull(chk); }
   } catch (e) {
     console.error('row', e);
     if (curCheck && curCheck.id === chk.id) $('#checkFullStage').textContent = 'The row could not be written: ' + (e.message || e);
@@ -419,18 +463,27 @@ async function writeCheckRow(chk) {
 const LEVEL_TEXT = { green: 'GREEN', amber: 'AMBER', red: 'RED', grey: 'NO SALES ON FILE' };
 function openCheckResult(chk) {
   curCheck = chk;
+  renderCheckVerdict(chk);
+  renderCheckFull(chk);
+  show('scr-checkresult', { title: 'The verdict', back: openCheckList });
+}
+// The verdict, what the record is, the copy already on the shelf, the sales of this edition - the row op's full
+// search replaces the first answer and says so ("verdict refined").
+function renderCheckVerdict(chk) {
   const q = chk.quick || {};
   const v = q.verdict || { level: 'grey', text: '' };
   const card = $('#checkVerdict');
   card.className = 'verdict ' + (v.level || 'grey');
   card.innerHTML = `<div class="v-level">${esc(LEVEL_TEXT[v.level] || String(v.level || '').toUpperCase())}</div>` +
     `<div class="v-name">${esc(q.name || '')}</div><div class="v-text">${esc(v.text || '')}</div>`;
+  $('#checkRefined').innerHTML = q.refined ? `<p class="hint" style="color:#e0b04a">${esc(q.refined.text)}</p>` : '';
+  const idt = q.identity || (chk.read && chk.read.identity) || null;
+  $('#checkWhat').innerHTML = idt && idt.what ? `<p class="hint">${esc(idt.what)}</p>` : '';
+  $('#checkHint').innerHTML = (q.hint || []).map(h => `<p class="hint">${esc(h)}</p>`).join('');
   const ev = q.evidence || null;
   const bits = [];
   if (ev) {
     if (ev.sales) bits.push(`${ev.sales} documented sale${ev.sales === 1 ? '' : 's'}${ev.thisEdition ? `, ${ev.thisEdition} of this edition` : ''}`);
-    if (ev.median != null) bits.push(`median $${ev.median}`);
-    if (ev.top != null) bits.push(`top $${ev.top}`);
     if (ev.discogsNm != null) bits.push(`Discogs near-mint $${ev.discogsNm}`);
     if (ev.newCopy != null) bits.push(`new copy $${ev.newCopy}`);
     if (ev.outOfPrint) bits.push('out of print');
@@ -438,9 +491,7 @@ function openCheckResult(chk) {
   }
   $('#checkSummary').textContent = bits.join(' · ');
   const lines = (q.lines || []).slice(0, 10);
-  $('#checkLines').innerHTML = lines.map(l => `<div class="v-line">${esc(l)}</div>`).join('');
-  renderCheckFull(chk);
-  show('scr-checkresult', { title: 'The verdict', back: openCheckList });
+  $('#checkLines').innerHTML = (lines.length ? '<p class="hint" style="margin-bottom:4px">Sales of this edition</p>' : '') + lines.map(l => `<div class="v-line">${esc(l)}</div>`).join('');
 }
 
 function renderCheckFull(chk) {
