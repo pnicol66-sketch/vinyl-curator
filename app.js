@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261113-123015';
+const APP_VERSION = '20261113-123328';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -515,7 +515,7 @@ async function addBoxLp() {
   if (!curAlbum || !curAlbum.box) return;
   const n = Math.max(1, Number(curAlbum.discs) || 1) + 1;
   if (n > BOX_MAX_LPS) return toast(`A box set here holds up to ${BOX_MAX_LPS} LPs`);
-  curAlbum.discs = n;
+  curAlbum.discs = n;   // one more LP
   await dbPut('albums', curAlbum);
   toast(`LP ${n} added — sides ${2 * n - 1}–${2 * n}`);
   focusShotId = `lp${n}jacket`;   // the list opens on the new LP
