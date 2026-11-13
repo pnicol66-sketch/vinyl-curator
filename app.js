@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261113-032427';
+const APP_VERSION = '20261113-123015';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -60,6 +60,66 @@ const TIPS = {
   label: '📸 Take the photo, then tap 3 points around the edge to crop. Center the label and fill the frame.',
   matrix: '📸 Take the photo of the run-out groove — angle the disc under light (try 🔦) so the etching casts shadows.',
 };
+/* A BOX SET (owner, 2026-11-12): album.box, and album.discs is then its count
+   of LPs - any number, one added at a time. The box's own entries are the
+   covers above (01-05, named as they always were). LP 1 and LP 2 are the
+   disc 1 and disc 2 entries above, named as they always were too. Each LP may
+   have a photo of its own jacket, and LP 3 onward get the same entries again
+   for their two sides (2n-1 and 2n, the box's side numbers), made here from
+   one template. Their files carry an LP token where the two-digit number
+   would be ("... - LP3 Side 5 Label.jpg"), a name nothing that reads the
+   two-digit numbers takes for one of sides 1-4. */
+const BOX_MAX_LPS = 30;
+const BOX_IDS = ['front', 'frontgrade', 'back', 'backgrade', 'other'];
+const BOX_SHOW = { front: 'Box Front', frontgrade: 'Box Front Grade', back: 'Box Back', backgrade: 'Box Back Grade' };
+function lpJacketDef(n) {
+  return { id: `lp${n}jacket`, tok: `LP${n}`, name: 'Jacket', type: 'cover', disc: n, lp: n, opt: true };
+}
+function lpSideDefs(n) {
+  const tok = `LP${n}`, sides = [2 * n - 1, 2 * n], out = [];
+  for (const s of sides) {
+    out.push({ id: `s${s}label`, tok, name: `Side ${s} Label`, type: 'label', disc: n, lp: n, side: s });
+    out.push({ id: `s${s}vinyl`, tok, name: `Side ${s} Vinyl`, type: 'label', disc: n, lp: n, side: s, opt: true, tip: VINYL_TIP });
+    out.push({ id: `s${s}grade`, tok, name: `Vinyl Grade Side ${s}`, type: 'grade', disc: n, lp: n, side: s });
+  }
+  for (const s of sides)
+    out.push({ id: `s${s}matrix`, tok, name: `Side ${s} Matrix/Runout`, fname: `Side ${s} Matrix Runout`, type: 'matrix', disc: n, lp: n, side: s });
+  return out;
+}
+// The checklist entries an album has, in the order the checklist shows them.
+// An album that is not a box set has exactly the entries it always had.
+function albumShots(al) {
+  const n = Math.max(1, Number(al && al.discs) || 1);
+  if (!(al && al.box)) return SHOTS.filter(d => d.disc <= n);
+  const out = SHOTS.filter(d => BOX_IDS.includes(d.id)).map(d => Object.assign({}, d, { lp: 0, show: BOX_SHOW[d.id] || d.name }));
+  for (let k = 1; k <= n; k++) {
+    out.push(lpJacketDef(k));
+    if (k <= 2) out.push(...SHOTS.filter(d => d.disc === k && !BOX_IDS.includes(d.id)).map(d => Object.assign({}, d, { lp: k })));
+    else out.push(...lpSideDefs(k));
+  }
+  return out;
+}
+// The entry a stored shot id belongs to (a runout photo slot's "_pN" is its
+// runout entry's), whatever album it is in.
+function shotDef(id) {
+  const base = String(id).replace(/_p\d+$/, '');
+  const d = SHOTS.find(x => x.id === base);
+  if (d) return d;
+  let m = /^lp(\d+)jacket$/.exec(base);
+  if (m && Number(m[1]) >= 1) return lpJacketDef(Number(m[1]));
+  m = /^s(\d+)(label|vinyl|grade|matrix)$/.exec(base);
+  if (m && Number(m[1]) >= 5) return lpSideDefs(Math.ceil(Number(m[1]) / 2)).find(x => x.id === base) || null;
+  return null;
+}
+// "06" for the numbered entries, "LP3" for a box's LP entries.
+function shotTag(def) { return def.tok || pad2(def.n); }
+function shotLabel(def) { return `${shotTag(def)} ${def.show || def.name}`; }
+// "1 disc", "2 discs", "Box set · 9 LPs" - the home card and the folder question.
+function albumKind(al) {
+  const n = Math.max(1, Number(al && al.discs) || 1);
+  if (al && al.box) return `Box set · ${n} LP${n === 1 ? '' : 's'}`;
+  return n === 2 ? '2 discs' : '1 disc';
+}
 
 /* ---------- IndexedDB ---------- */
 let _db = null;
@@ -179,7 +239,7 @@ async function goHome() {
   }
   for (const al of albums) {
     const shots = await shotsFor(al.id);
-    const visible = SHOTS.filter(s => s.disc <= al.discs);
+    const visible = albumShots(al);
     const done = shots.filter(s => s.status === 'done' || s.status === 'text').length;
     const row = document.createElement('div');
     row.className = 'albumcard';
@@ -188,7 +248,7 @@ async function goHome() {
     row.innerHTML =
       `<button class="al-open"><div class="al-art">${esc(al.artist)}</div>` +
       `<div class="al-title">${esc(al.title)}</div>` +
-      `<div class="al-meta">${al.discs === 2 ? '2 discs' : '1 disc'} · ${done}/${visible.length} photos</div>` +
+      `<div class="al-meta">${albumKind(al)} · ${done}/${visible.length} photos</div>` +
       `<div class="al-up${al.upload ? ' ' + al.upload.state : ''}${upText ? '' : ' hidden'}">${esc(upText)}</div></button>` +
       (al.upload && al.upload.state === 'ask'
         ? `<button class="al-retry" aria-label="Choose what to keep">⇄</button>`
@@ -229,12 +289,14 @@ $('#btnCreate').onclick = async () => {
   const title = $('#inTitle').value.trim();
   if (!artist) return toast('Enter the label artist name');
   if (!title) return toast('Enter the album title');
+  const box = $('#inDiscsBox').checked;
   const al = {
     id: Date.now().toString(36),
     artist, title,
-    discs: $('#inDiscs2').checked ? 2 : 1,
+    discs: !box && $('#inDiscs2').checked ? 2 : 1,
     created: Date.now(),
   };
+  if (box) al.box = true;   // a box set starts with LP 1; "Add another LP" adds the rest
   await dbPut('albums', al);
   openAlbum(al.id);
 };
@@ -253,6 +315,9 @@ async function openAlbum(id) {
 // next one had to be found again. So the return remembers the entry it came
 // from and lands on it, the next entries right below.
 let focusShotId = null;
+// A box set's LP blocks opened or folded by hand, by "<albumId>:<LP>"; a block
+// not touched is folded once it is complete.
+const lpOpen = {};
 function backToAlbum() {
   stopCam();
   freeReview();
@@ -271,12 +336,12 @@ async function renderShotList() {
   $('#albumHdr').textContent = `${curAlbum.artist} — ${curAlbum.title}`;
   const list = $('#shotList');
   list.innerHTML = '';
-  const visible = SHOTS.filter(s => s.disc <= curAlbum.discs);
-  let done = 0;
-  for (const def of visible) {
+  const visible = albumShots(curAlbum);
+  const isDone = def => { const st = byId[def.id]?.status; return st === 'done' || st === 'text'; };
+  const done = visible.filter(isDone).length;
+  const shotRow = def => {
     const rec = byId[def.id];
     const status = rec?.status || '';
-    if (status === 'done' || status === 'text') done++;
     const isMatrix = def.type === 'matrix';
     const slotRecs = isMatrix ? SLOTS.map(n => byId[slotId(def, n)]).filter(Boolean) : [];
     const item = document.createElement('button');
@@ -290,7 +355,7 @@ async function renderShotList() {
     if (def.type === 'grade' && (curAlbum.gradeNotes || {})[def.id]) nameExtra += ' <em>· ✎ note</em>';
     item.innerHTML =
       `<span class="thumb">${thumbChar}</span>` +
-      `<span class="shotname">${pad2(def.n)} ${esc(def.name)}${nameExtra}</span>` +
+      `<span class="shotname">${esc(shotLabel(def))}${nameExtra}</span>` +
       `<span class="shotstate ${status === 'text' ? 'done' : status}">${status === 'done' || status === 'text' ? '✓' : status === 'skipped' ? 'skipped' : ''}</span>`;
     const thumbBlob = status === 'done' ? rec.blob : slotRecs.length ? slotRecs[0].blob : null;
     if (thumbBlob) {
@@ -306,22 +371,73 @@ async function renderShotList() {
       else if (status === 'text' || def.type === 'grade') openTextEntry(def, rec);
       else openCamera(def);
     };
-    list.appendChild(item);
+    return item;
+  };
+  // A row of its own that is not an entry: the disc count, the box set's LPs.
+  const actRow = (act, thumb, name, sub, onclick) => {
+    const b = document.createElement('button');
+    b.className = 'shotitem';
+    b.dataset.act = act;
+    b.innerHTML = `<span class="thumb">${thumb}</span><span class="shotname">${name} <em>· ${sub}</em></span><span class="shotstate"></span>`;
+    b.onclick = onclick;
+    return b;
+  };
+  if (!curAlbum.box) {
+    for (const def of visible) list.appendChild(shotRow(def));
+    // The disc count is a checklist row of its own, right where the missing
+    // sides would appear: a single LP that turns out to be a set grows sides
+    // 3-4 in place (nothing taken is touched), and a set shrunk to one LP drops
+    // them - asking first when they hold anything. The habit this fixes: the
+    // default is 1 disc, and the mistake is noticed with the checklist open.
+    const two = curAlbum.discs === 2;
+    const discItem = document.createElement('button');
+    discItem.className = 'shotitem';
+    discItem.innerHTML =
+      `<span class="thumb">${two ? '−' : '＋'}</span>` +
+      `<span class="shotname">${two ? 'Single disc' : '2-disc set'} <em>· ${two ? 'remove sides 3–4' : 'add sides 3–4'}</em></span>` +
+      `<span class="shotstate"></span>`;
+    discItem.onclick = () => setDiscs(two ? 1 : 2);
+    list.appendChild(discItem);
+    // ...and so is the box set: what is taken stays, LP 1 and LP 2 being sides 1-4
+    list.appendChild(actRow('makebox', '▤', 'Make this a box set', 'add its LPs one by one', () => setBox(true)));
+  } else {
+    // A box set: its own entries, then a block a LP under a heading that
+    // folds the block away once it is complete. A return to the checklist
+    // opens the block of the entry it came from.
+    const lps = Math.max(1, Number(curAlbum.discs) || 1);
+    for (const def of visible.filter(d => d.lp === 0)) list.appendChild(shotRow(def));
+    for (let k = 1; k <= lps; k++) {
+      const defs = visible.filter(d => d.lp === k);
+      const n = defs.filter(isDone).length;
+      const complete = defs.every(d => d.opt || isDone(d) || byId[d.id]?.status === 'skipped');
+      const key = curAlbum.id + ':' + k;
+      const focused = !!focusShotId && defs.some(d => d.id === focusShotId);
+      const open = focused || (key in lpOpen ? lpOpen[key] : !complete);
+      const head = document.createElement('div');
+      head.className = 'lphead';
+      head.dataset.lp = String(k);
+      const fold = document.createElement('button');
+      fold.className = 'lpfold';
+      fold.innerHTML =
+        `<span class="lpchev">${open ? '▾' : '▸'}</span>` +
+        `<span class="shotname">LP ${k} <em>· sides ${2 * k - 1}–${2 * k} · ${n}/${defs.length}</em></span>` +
+        `<span class="shotstate ${complete ? 'done' : ''}">${complete ? '✓' : ''}</span>`;
+      fold.onclick = () => { lpOpen[key] = !open; renderShotList(); };
+      head.appendChild(fold);
+      // only the last LP is removed, so no LP after it is ever renumbered
+      if (k === lps && k >= 2) {
+        const rm = document.createElement('button');
+        rm.className = 'lpremove';
+        rm.textContent = `Remove LP ${k}`;
+        rm.onclick = () => removeBoxLp();
+        head.appendChild(rm);
+      }
+      list.appendChild(head);
+      if (open) for (const def of defs) list.appendChild(shotRow(def));
+    }
+    list.appendChild(actRow('addlp', '＋', 'Add another LP', `LP ${lps + 1} · sides ${2 * lps + 1}–${2 * lps + 2}`, () => addBoxLp()));
+    list.appendChild(actRow('notbox', '−', 'Not a box set', lps >= 2 ? 'a 2-disc set again' : 'a single disc again', () => setBox(false)));
   }
-  // The disc count is a checklist row of its own, right where the missing
-  // sides would appear: a single LP that turns out to be a set grows sides
-  // 3-4 in place (nothing taken is touched), and a set shrunk to one LP drops
-  // them - asking first when they hold anything. The habit this fixes: the
-  // default is 1 disc, and the mistake is noticed with the checklist open.
-  const two = curAlbum.discs === 2;
-  const discItem = document.createElement('button');
-  discItem.className = 'shotitem';
-  discItem.innerHTML =
-    `<span class="thumb">${two ? '−' : '＋'}</span>` +
-    `<span class="shotname">${two ? 'Single disc' : '2-disc set'} <em>· ${two ? 'remove sides 3–4' : 'add sides 3–4'}</em></span>` +
-    `<span class="shotstate"></span>`;
-  discItem.onclick = () => setDiscs(two ? 1 : 2);
-  list.appendChild(discItem);
   // per-album personal note (private) — its own row at the very end
   const noteVal = (curAlbum.personalNote || '').trim();
   const noteItem = document.createElement('button');
@@ -383,16 +499,101 @@ async function setDiscs(n) {
   toast(n === 2 ? 'Sides 3–4 added — a 2-disc set' : 'Sides 3–4 removed — a single disc');
   renderShotList();
 }
+// "2 photos and 1 typed entry" - what some stored shots hold, '' for nothing
+// worth asking about (a skipped marker alone).
+function heldText(shots) {
+  const photos = shots.filter(s => s.blob).length;
+  const texts = shots.filter(s => s.status === 'text').length;
+  const parts = [];
+  if (photos) parts.push(`${photos} photo${photos === 1 ? '' : 's'}`);
+  if (texts) parts.push(`${texts} typed entr${texts === 1 ? 'y' : 'ies'}`);
+  return parts.join(' and ');
+}
+// A box set's LPs are added one at a time, after the last: the new LP's
+// entries appear in place and nothing taken is touched.
+async function addBoxLp() {
+  if (!curAlbum || !curAlbum.box) return;
+  const n = Math.max(1, Number(curAlbum.discs) || 1) + 1;
+  if (n > BOX_MAX_LPS) return toast(`A box set here holds up to ${BOX_MAX_LPS} LPs`);
+  curAlbum.discs = n;
+  await dbPut('albums', curAlbum);
+  toast(`LP ${n} added — sides ${2 * n - 1}–${2 * n}`);
+  focusShotId = `lp${n}jacket`;   // the list opens on the new LP
+  renderShotList();
+}
+// Only the LAST LP is removed, so no later LP is renumbered and no file goes
+// up again under a new name. What it holds is named and asked about first;
+// an album already uploaded is told its Drive folder keeps that LP's files,
+// since this app never deletes a Drive file.
+async function removeBoxLp() {
+  if (!curAlbum || !curAlbum.box) return;
+  const n = Math.max(1, Number(curAlbum.discs) || 1);
+  if (n < 2) return;
+  const ids = albumShots(curAlbum).filter(d => d.lp === n).map(d => d.id);
+  const gone = (await shotsFor(curAlbum.id)).filter(s => ids.includes(String(s.shotId).replace(/_p\d+$/, '')));
+  const what = heldText(gone);
+  if (what) {
+    const kept = curAlbum.driveFolderId ? ' Its files already in the album’s Drive folder stay there — this app never deletes a Drive file.' : '';
+    if (!confirm(`LP ${n} holds ${what}. Remove them with the LP?${kept}`)) return;
+  }
+  for (const s of gone) await dbDel('shots', [curAlbum.id, s.shotId]);
+  const notes = Object.assign({}, curAlbum.gradeNotes || {});
+  let noteGone = false;
+  for (const id of ids) if (id in notes) { delete notes[id]; noteGone = true; }
+  if (noteGone) curAlbum.gradeNotes = notes;
+  delete lpOpen[curAlbum.id + ':' + n];
+  curAlbum.discs = n - 1;
+  await dbPut('albums', curAlbum);
+  toast(`LP ${n} removed`);
+  renderShotList();
+}
+// A box set or not is revisable on the checklist, where the mistake is
+// noticed, like the disc count above. Making one keeps
+// everything: LP 1 and LP 2 are sides 1-4. Undoing one is refused while LP 3
+// or later holds anything, and otherwise asks first (an LP jacket photo goes
+// with the box).
+async function setBox(on) {
+  if (!curAlbum || !!curAlbum.box === on) return;
+  if (on) {
+    curAlbum.box = true;
+    curAlbum.discs = Math.max(1, Number(curAlbum.discs) || 1);
+    await dbPut('albums', curAlbum);
+    toast('A box set — LP 1–2 are sides 1–4; add its other LPs below');
+    return renderShotList();
+  }
+  const lps = Math.max(1, Number(curAlbum.discs) || 1);
+  const shots = await shotsFor(curAlbum.id);
+  const boxOnly = shots.filter(s => { const d = shotDef(s.shotId); return d && (d.tok || d.disc > 2); });
+  const later = heldText(boxOnly.filter(s => shotDef(s.shotId).disc > 2));
+  if (later) {
+    const range = lps > 3 ? `LP 3–${lps}` : 'LP 3';
+    return toast(`${range} ${lps > 3 ? 'hold' : 'holds'} ${later}. Remove ${range} first.`, 4000);
+  }
+  const jackets = boxOnly.filter(s => s.blob).length;
+  const to = lps >= 2 ? 'a 2-disc set' : 'a single disc';
+  const q = `Make this ${to} again, not a box set?` +
+    (jackets ? ` Its ${jackets} LP jacket photo${jackets === 1 ? '' : 's'} ${jackets === 1 ? 'goes' : 'go'} with the box.` : '');
+  if (!confirm(q)) return;
+  for (const s of boxOnly) await dbDel('shots', [curAlbum.id, s.shotId]);
+  delete curAlbum.box;
+  curAlbum.discs = Math.min(lps, 2);
+  await dbPut('albums', curAlbum);
+  toast(`Not a box set — ${to}`);
+  renderShotList();
+}
 // The album is a parameter (defaulting to the open one) because the upload
-// queue names files for albums that are no longer on screen.
+// queue names files for albums that are no longer on screen. A box's LP
+// entries carry their LP token where the number would be ("LP3 Side 5 Label"),
+// and a runout photo of theirs a plain slot number (the side letters A-D are
+// sides 1-4's).
 function baseNameFor(def, al = curAlbum) {
-  return sanitize(`${al.artist} - ${al.title} - ${pad2(def.n)} ${def.fname || def.name}`);
+  return sanitize(`${al.artist} - ${al.title} - ${shotTag(def)} ${def.fname || def.name}`);
 }
 function filenameFor(def, al = curAlbum) {
   return baseNameFor(def, al) + '.jpg';
 }
 function slotFilename(def, n, al = curAlbum) {
-  return `${baseNameFor(def, al)} ${def.letter}${n}.jpg`;
+  return `${baseNameFor(def, al)} ${def.letter || ''}${n}.jpg`;
 }
 
 /* ---------- camera ---------- */
@@ -404,9 +605,9 @@ async function openCamera(def, slot) {
   curShot = def;
   curSlot = def.type === 'matrix' ? (slot || 1) : null;
   freeReview();
-  const label = curSlot ? `${pad2(def.n)} ${def.name} · Photo ${curSlot}` : `${pad2(def.n)} ${def.name}`;
+  const label = curSlot ? `${shotLabel(def)} · Photo ${curSlot}` : shotLabel(def);
   show('scr-camera', { title: label, back: camBack });
-  $('#camLabel').textContent = curSlot ? `${pad2(def.n)} · ${def.name} · Photo ${curSlot}` : `${pad2(def.n)} · ${def.name}`;
+  $('#camLabel').textContent = curSlot ? `${shotTag(def)} · ${def.show || def.name} · Photo ${curSlot}` : `${shotTag(def)} · ${def.show || def.name}`;
   $('#camTip').textContent = def.tip || TIPS[def.type] || '';
   $('#btnSkip').classList.toggle('hidden', !def.opt);
   $('#camFallback').classList.add('hidden');
@@ -614,7 +815,7 @@ function openReview(bmp) {
   $('#btnShape').classList.toggle('hidden', type !== 'matrix');
   $('#btnUndo').classList.toggle('hidden', shape === 'rect');
   updateShapeBtn();
-  show('scr-review', { title: `${pad2(curShot.n)} ${curShot.name}`, back: () => openCamera(curShot, curSlot) });
+  show('scr-review', { title: shotLabel(curShot), back: () => openCamera(curShot, curSlot) });
   layoutReview();
   if (tapMode && shape === 'quad' && settings.autoCrop) tryOnDeviceThenTap(bmp);
   else if (tapMode) enterTapMode();
@@ -1933,7 +2134,7 @@ async function openTextEntry(def, rec) {
   if (isGrade) {
     // "Same as side 1" / "Same as front": most copies are one grade throughout, so it is one tap
     const src = def.id === 'backgrade' ? { id: 'frontgrade', label: 'front' }
-      : /^s[234]grade$/.test(def.id) ? { id: 's1grade', label: 'side 1' } : null;
+      : /^s\d+grade$/.test(def.id) && def.id !== 's1grade' ? { id: 's1grade', label: 'side 1' } : null;
     const srcRec = src ? await dbGet('shots', [curAlbum.id, src.id]) : null;
     const same = srcRec && srcRec.status === 'text' && srcRec.text !== text ? srcRec.text : '';
     gradeBoxOpen(def, text, (curAlbum.gradeNotes || {})[def.id] || '', same, same ? `Same as ${src.label} (${same})` : '');
@@ -1943,7 +2144,7 @@ async function openTextEntry(def, rec) {
     $('#btnGradeSame').classList.add('hidden');
     await renderSlots(def);
   }
-  show('scr-text', { title: `${pad2(def.n)} ${def.name}`, back: () => { gradeBoxClose(); backToAlbum(); } });
+  show('scr-text', { title: shotLabel(def), back: () => { gradeBoxClose(); backToAlbum(); } });
 }
 async function renderSlots(def) {
   freeSlotUrls();
@@ -2848,7 +3049,7 @@ function openViewer(def, rec) {
   viewerUrl = URL.createObjectURL(rec.blob);
   $('#viewerImg').src = viewerUrl;
   $('#viewerName').textContent = filenameFor(def);
-  show('scr-viewer', { title: `${pad2(def.n)} ${def.name}`, back: backToAlbum });
+  show('scr-viewer', { title: shotLabel(def), back: backToAlbum });
 }
 function openSlotViewer(def, n, rec) {
   viewShot = def;
@@ -2857,7 +3058,7 @@ function openSlotViewer(def, n, rec) {
   viewerUrl = URL.createObjectURL(rec.blob);
   $('#viewerImg').src = viewerUrl;
   $('#viewerName').textContent = slotFilename(def, n);
-  show('scr-viewer', { title: `${pad2(def.n)} ${def.name} · Photo ${n}`, back: () => openTextEntry(def) });
+  show('scr-viewer', { title: `${shotLabel(def)} · Photo ${n}`, back: () => openTextEntry(def) });
 }
 $('#btnVRetake').onclick = () => openCamera(viewShot, viewSlot);
 $('#btnVDelete').onclick = async () => {
@@ -2883,8 +3084,7 @@ $('#btnExport').onclick = openExport;
 async function buildExportItems(al) {
   const shots = await shotsFor(al.id);
   const byId = Object.fromEntries(shots.map(s => [s.shotId, s]));
-  return SHOTS
-    .filter(def => def.disc <= al.discs)
+  return albumShots(al)
     .flatMap(def => {
       const rec = byId[def.id];
       const items = [];
@@ -3133,15 +3333,18 @@ async function folderOwner(folderId) {
   let m = null;
   try { m = JSON.parse(await res.text()); } catch (e) { m = null; }
   if (!m || !m.appAlbumId) return null;
-  return { appAlbumId: String(m.appAlbumId), artist: String(m.artist || ''), title: String(m.title || ''), discs: Number(m.discs) || 1 };
+  return { appAlbumId: String(m.appAlbumId), artist: String(m.artist || ''), title: String(m.title || ''), discs: Number(m.discs) || 1,
+    box: m.box === true };
 }
-// "Bob Dylan — Bringing It All Back Home, 1 disc, its album made 8 Oct 2026"
+// "Bob Dylan — Bringing It All Back Home, 1 disc, its album made 8 Oct 2026"; a box set
+// "..., box set, 9 LPs, ..."
 function ownerText(own) {
   const ms = parseInt(own.appAlbumId, 36);
   const made = ms > 1.5e12 && ms < 2.5e12
     ? ', its album made ' + new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
   return (own.artist || own.title ? own.artist + ' — ' + own.title + ', ' : '') +
-    own.discs + ' disc' + (own.discs === 1 ? '' : 's') + made;
+    (own.box ? 'box set, ' + own.discs + ' LP' + (own.discs === 1 ? '' : 's')
+      : own.discs + ' disc' + (own.discs === 1 ? '' : 's')) + made;
 }
 // Create or replace one file in a folder, by name. Same find-then-PATCH-or-POST
 // the photo loop always did; it lives here so the manifest goes up the same way.
@@ -3243,13 +3446,14 @@ async function maybeCropNotice() {
 // title and went out on eBay and Discogs listings that way. The manifest says
 // what the album is; the folder name goes back to being just a name.
 // The grades' condition notes as album.json carries them: by the grade's shot number (2 and 4 the covers, 7-13 the
-// sides), only the sides this album has. The sheet writes them into Cover Comments and Vinyl Comments.
+// sides), only the sides this album has. The sheet writes them into Cover Comments and Vinyl Comments. A box set's
+// sides 5 on have no shot number, so theirs go by "side5", "side6" ...
 function gradeNotesManifest(album) {
   const out = {};
-  for (const def of SHOTS) {
-    if (def.type !== 'grade' || def.disc > (album.discs || 1)) continue;
+  for (const def of albumShots(album)) {
+    if (def.type !== 'grade') continue;
     const t = String(((album.gradeNotes || {})[def.id]) || '').trim();
-    if (t) out[String(def.n)] = t;
+    if (t) out[def.n ? String(def.n) : 'side' + def.side] = t;
   }
   return out;
 }
@@ -3261,6 +3465,10 @@ function gradeNotesFromManifest(manifest) {
     const t = def.type === 'grade' ? String(g[String(def.n)] || '').trim() : '';
     if (t) out[def.id] = t;
   }
+  for (const k of Object.keys(g)) {
+    const m = /^side(\d+)$/.exec(k), t = String(g[k] || '').trim();
+    if (m && Number(m[1]) >= 5 && t) out[`s${Number(m[1])}grade`] = t;
+  }
   return out;
 }
 async function writeAlbumManifest(folder, album) {
@@ -3270,6 +3478,7 @@ async function writeAlbumManifest(folder, album) {
     artist: album.artist,
     title: album.title,
     discs: album.discs || 1,
+    ...(album.box ? { box: true } : {}),   // a box set: discs is its count of LPs
     personalNote: (album.personalNote || '').trim(),
     upc: (album.upc || '').trim(),
     gradeNotes: gradeNotesManifest(album),
@@ -3557,8 +3766,8 @@ async function refreshAlbumFromDrive(al, held) {
   const byId = Object.fromEntries((await shotsFor(al.id)).map(s => [s.shotId, s]));
   const sent = Object.assign({}, al.sent || {});
   let took = 0, noted = 0;
-  for (const def of SHOTS) {
-    if (def.disc > (al.discs || 1) || (def.type !== 'grade' && def.type !== 'matrix')) continue;
+  for (const def of albumShots(al)) {
+    if (def.type !== 'grade' && def.type !== 'matrix') continue;
     const name = baseNameFor(def, al) + '.txt';
     const df = files[name];
     if (!df) continue;
@@ -4196,6 +4405,68 @@ function identityFromFolder(folderName, manifest) {
   };
 }
 
+// Which file feeds which entry, planned before anything is downloaded. A
+// file's shot number opens the LAST " - " part of its name, as the sheet
+// reads it: "Leonard Cohen - 10 New Songs - 06 Side 1 Label.jpg" is
+// shot 06, never 10. A box set's LP files carry their LP token there instead
+// ("... - LP3 Side 5 Label.jpg", "... - LP3 Jacket.jpg").
+function reimportJobs(files) {
+  const jobs = [];
+  for (const file of files) {
+    const isImg = (file.mimeType || '').startsWith('image/');
+    const isTxt = !isImg && (/\.txt$/i.test(file.name) || (file.mimeType || '').startsWith('text/'));
+    const lm = file.name.match(/ - LP(\d{1,2}) (?!.* - )(.+?)(?:\.[^.]+)?$/);
+    if (lm) {
+      const n = Number(lm[1]), rest = lm[2];
+      if (rest === 'Jacket') {
+        if (isImg && n >= 1) jobs.push({ kind: 'photo', def: lpJacketDef(n), file });
+        continue;
+      }
+      if (n < 3) continue;   // LP 1 and LP 2 are named by their shot numbers
+      const defs = lpSideDefs(n);
+      const ofSide = (s, what) => (Number(s) === 2 * n - 1 || Number(s) === 2 * n) ? defs.find(d => d.id === `s${Number(s)}${what}`) : null;
+      let m, def;
+      if ((m = /^Side (\d+) (Label|Vinyl)$/.exec(rest)) && (def = ofSide(m[1], m[2].toLowerCase()))) {
+        if (isImg) jobs.push({ kind: 'photo', def, file });
+      } else if ((m = /^Vinyl Grade Side (\d+)$/.exec(rest)) && (def = ofSide(m[1], 'grade'))) {
+        if (isTxt) jobs.push({ kind: 'text', def, file });
+      } else if ((m = /^Side (\d+) Matrix Runout(?: ([1-4]))?$/.exec(rest)) && (def = ofSide(m[1], 'matrix'))) {
+        if (!m[2] && isTxt) jobs.push({ kind: 'mtext', def, file, legacy: false });
+        else if (m[2] && isImg) jobs.push({ kind: 'slot', def, file, slot: Number(m[2]) });
+      }
+      continue;
+    }
+    const nm = file.name.match(/ - (\d\d)(?!.* - ) /);
+    if (!nm) continue;
+    const num = Number(nm[1]);
+    if (num >= 14 && num <= 21) {
+      // matrix/runout block; odd numbers are the retired Dead Wax Other files
+      const def = SHOTS.find(s => s.id === `s${Math.floor((num - 14) / 2) + 1}matrix`);
+      if (!def) continue;
+      if (isTxt) jobs.push({ kind: 'mtext', def, file, legacy: num % 2 === 1 });
+      else if (isImg) {
+        const sm = file.name.match(/ [A-D]([1-4])\.[^.]+$/i);
+        jobs.push({ kind: 'slot', def, file, slot: sm ? Number(sm[1]) : null });
+      }
+      continue;
+    }
+    const def = SHOTS.find(s => s.n === num);
+    if (!def) continue;
+    if (def.type === 'grade' && isTxt) jobs.push({ kind: 'text', def, file });
+    else if (def.type !== 'grade' && isImg) jobs.push({ kind: 'photo', def, file });
+  }
+  return jobs;
+}
+// A box set comes back a box set with its count of LPs (album.json says so,
+// and so does any LP file); any other album as it always did - two discs when
+// a side 3-4 file is there.
+function reimportShape(jobs, manifest) {
+  const box = !!(manifest && manifest.box === true) || jobs.some(j => j.def.tok);
+  if (!box) return { discs: jobs.some(j => j.def.disc === 2) ? 2 : 1 };
+  const said = Number(manifest && manifest.discs) || 0;
+  return { box: true, discs: Math.min(BOX_MAX_LPS, Math.max(1, said, ...jobs.map(j => j.def.disc || 1))) };
+}
+
 async function reimportAlbum(f) {
   const st = $('#arcAlbumStatus');
   const btn = $('#btnReimport');
@@ -4227,38 +4498,18 @@ async function reimportAlbum(f) {
   btn.disabled = true;
   try {
     // plan which file feeds which record before downloading anything
-    const jobs = [];
-    for (const file of files) {
-      const nm = file.name.match(/ - (\d\d) /);
-      if (!nm) continue;
-      const num = Number(nm[1]);
-      const isImg = (file.mimeType || '').startsWith('image/');
-      const isTxt = !isImg && (/\.txt$/i.test(file.name) || (file.mimeType || '').startsWith('text/'));
-      if (num >= 14 && num <= 21) {
-        // matrix/runout block; odd numbers are the retired Dead Wax Other files
-        const def = SHOTS.find(s => s.id === `s${Math.floor((num - 14) / 2) + 1}matrix`);
-        if (!def) continue;
-        if (isTxt) jobs.push({ kind: 'mtext', def, file, legacy: num % 2 === 1 });
-        else if (isImg) {
-          const sm = file.name.match(/ [A-D]([1-4])\.[^.]+$/i);
-          jobs.push({ kind: 'slot', def, file, slot: sm ? Number(sm[1]) : null });
-        }
-        continue;
-      }
-      const def = SHOTS.find(s => s.n === num);
-      if (!def) continue;
-      if (def.type === 'grade' && isTxt) jobs.push({ kind: 'text', def, file });
-      else if (def.type !== 'grade' && isImg) jobs.push({ kind: 'photo', def, file });
-    }
+    const jobs = reimportJobs(files);
     if (!jobs.length) {
       st.textContent = '';
       btn.disabled = false;
       return toast('No recognizable album files in this folder.');
     }
+    const shape = reimportShape(jobs, manifest);
     const al = {
       id: Date.now().toString(36),
       artist, title,
-      discs: jobs.some(j => j.def.disc === 2) ? 2 : 1,
+      discs: shape.discs,
+      ...(shape.box ? { box: true } : {}),
       created: Date.now(),
       upc: upcCheck(manifest && manifest.upc) || '',
       personalNote: String((manifest && manifest.personalNote) || ''),

@@ -153,6 +153,18 @@ textarea { resize: vertical; min-height: 110px; font: inherit; font-size: 16px; 
 .shotname em { color: var(--dim); font-size: 12px; font-style: normal; }
 .shotstate { font-size: 13px; color: var(--dim); }
 .shotstate.done { color: #6fd97e; font-size: 17px; }
+/* a box set's LP headings: tap to fold the LP's entries away; the last LP's own remove button */
+.lphead { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; scroll-margin-top: calc(var(--hdr) + 8px); }
+.lpfold {
+  flex: 1; display: flex; align-items: center; gap: 10px; text-align: left; color: var(--text);
+  background: none; border: 0; border-bottom: 1px solid var(--line); padding: 8px 4px; font-size: 15px; font-weight: 700;
+}
+.lpfold em { color: var(--dim); font-size: 12px; font-style: normal; font-weight: 400; }
+.lpchev { width: 18px; color: var(--dim); }
+.lpremove {
+  flex: none; border: 1px solid var(--line); background: none; color: #ff7b6b;
+  border-radius: 10px; padding: 7px 10px; font-size: 13px;
+}
 /* camera */
 #camWrap { position: relative; flex: 1; background: #000; overflow: hidden; }
 #video { width: 100%; height: 100%; object-fit: contain; display: block; }
@@ -385,6 +397,7 @@ h2.sect { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-
   <div class="radio-row">
     <label><input type="radio" name="discs" id="inDiscs1" checked><span>1 disc (sides 1–2)</span></label>
     <label><input type="radio" name="discs" id="inDiscs2"><span>2 discs (sides 1–4)</span></label>
+    <label><input type="radio" name="discs" id="inDiscsBox"><span>Box set (add LPs)</span></label>
   </div>
   <div style="height:22px"></div>
   <button id="btnCreate" class="primary">Start shooting</button>
