@@ -2,7 +2,7 @@
 
 /* Build stamp — rewritten by bump-version.ps1 (and the pre-commit hook) so it
    always matches the service worker's cache name. Shown in Settings. */
-const APP_VERSION = '20261105-043051';
+const APP_VERSION = '20261113-032427';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -2186,6 +2186,7 @@ const GRADE_MARKS = [
   { mark: "2 EYE", on: "vinyl", more: true, label: "Columbia", excl: "eye", also: ["TWO EYE"] },
   { mark: "TRUMPETER LABEL", on: "vinyl", more: true, label: "Verve", excl: "", also: [] },
   { mark: "SILVER BAND", on: "vinyl", more: true, label: "EmArcy", excl: "", also: ["SILVER RIM"] },
+  { mark: "GATEFOLD", on: "cover", more: false, label: "", excl: "", also: [] },
   { mark: "IN SHRINK", on: "cover", more: false, label: "", excl: "", also: ["IN ORIGINAL SHRINK", "UNOPENED BY SHRINK", "PARTIAL SHRINK"] },
   { mark: "BLUE BACK", on: "cover", more: true, label: "EmArcy", excl: "", also: [] },
 ];
